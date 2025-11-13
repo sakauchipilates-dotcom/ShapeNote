@@ -1,0 +1,106 @@
+// ======================================
+// 🔥 Firestore ルール（2025.11 最新安定版）
+// ======================================
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ==============================
+    // 🧩 共通関数
+    // ==============================
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      // ✅ 管理アプリ専用ユーザー（FirebaseAuth の email）
+      return request.auth.token.email == "sakauchi.pilates@gmail.com";
+    }
+
+    // ==============================
+    // 👤 users コレクション（顧客データ）
+    // ==============================
+    match /users/{userId} {
+      // 管理者は全権、顧客は自分のデータのみ
+      allow read, write: if isAdmin()
+                         || (isSignedIn() && request.auth.uid == userId);
+    }
+
+    // ==============================
+    // 💬 chats コレクション（顧客⇄管理者チャット）
+    // ==============================
+    match /chats/{chatId} {
+      // チャットルーム本体（顧客 or 管理者どちらも書込可）
+      allow read, write: if isAdmin()
+                         || (isSignedIn() && request.auth.uid == chatId);
+
+      // サブコレクション：messages
+      match /messages/{messageId} {
+        allow read, write: if isAdmin()
+                           || (isSignedIn() && request.auth.uid == chatId);
+      }
+    }
+
+    // ==============================
+    // 🎟 coupons コレクション（顧客向けクーポン）
+    // ==============================
+    match /coupons/{userId} {
+      allow read, write: if isAdmin()
+                         || (isSignedIn() && request.auth.uid == userId);
+    }
+
+    // ==============================
+    // 📩 contacts コレクション（お問い合わせフォーム）
+    // ==============================
+    match /contacts/{docId} {
+      // 🔹 外部（非ログインユーザー）も create は許可
+      allow create: if true;
+
+      // 🔹 顧客本人 or 管理者のみ read 可
+      allow read: if isAdmin()
+                  || (isSignedIn() && resource.data.email == request.auth.token.email);
+
+      // 🔹 編集・削除は管理者のみ
+      allow update, delete: if isAdmin();
+    }
+
+    // ==============================
+    // 🧑‍💼 admins コレクション（管理用設定）
+    // ==============================
+    match /admins/{adminId} {
+      // 管理者は read / write 両方可
+      allow read, write: if isAdmin();
+
+      // 顧客は read のみ（店舗情報・お知らせ閲覧など）
+      allow read: if isSignedIn() && !isAdmin();
+    }
+
+    // ==============================
+    // ⚖️ weights コレクション（体重・記録）
+    // ==============================
+    match /weights/{uid} {
+      allow read, write: if isAdmin()
+                         || (isSignedIn() && request.auth.uid == uid);
+
+      match /daily/{dayId} {
+        allow read, write: if isAdmin()
+                           || (isSignedIn() && request.auth.uid == uid);
+      }
+    }
+
+    // ==============================
+    // 🏋️ exerciseSheets コレクション（トレーニング指導書）
+    // ==============================
+    match /exerciseSheets/{uid} {
+      allow read, write: if isAdmin()
+                         || (isSignedIn() && request.auth.uid == uid);
+    }
+
+    // ==============================
+    // 🚫 その他データは全拒否
+    // ==============================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

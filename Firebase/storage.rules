@@ -1,0 +1,53 @@
+// ======================================
+// ☁️ Firebase Storage Rules（2025.11 最新安定版）
+// ShapeNote 用
+// ======================================
+
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // ===============================
+    // 🧩 共通関数
+    // ===============================
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // ===============================
+    // 🖼 user_icons フォルダ
+    // 各ユーザーが自分のアイコン画像をアップロード
+    // ===============================
+    match /user_icons/{uid}/{fileName=**} {
+      // 🔹 読み取り：誰でも可（Firestore の URL 管理前提）
+      allow read: if true;
+
+      // 🔹 書き込み：自分のフォルダ内のみ許可
+      allow write: if isSignedIn() && request.auth.uid == uid;
+    }
+
+    // ===============================
+    // 🧑‍💼 admin_uploads フォルダ（管理者素材置き場）
+    // ===============================
+    match /admin_uploads/{fileName=**} {
+      allow read: if true; // 素材として顧客も閲覧OK
+      allow write: if request.auth.token.email == "sakauchi.pilates@gmail.com";
+    }
+
+    // ===============================
+    // 🏋️ exercise_sheets フォルダ（トレーニング資料など）
+    // ===============================
+    match /exercise_sheets/{uid}/{fileName=**} {
+      allow read: if isSignedIn()
+                  && (request.auth.uid == uid || request.auth.token.email == "sakauchi.pilates@gmail.com");
+      allow write: if isSignedIn() && request.auth.uid == uid;
+    }
+
+    // ===============================
+    // 🚫 その他すべて拒否
+    // ===============================
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
