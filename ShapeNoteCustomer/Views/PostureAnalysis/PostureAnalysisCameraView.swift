@@ -3,7 +3,9 @@ import AVFoundation
 
 struct PostureAnalysisCameraView: View {
 
-    @Environment(\.dismiss) private var dismiss
+    // 🔥 CustomerRootView から渡される Navigation 操作
+    let onPush: (PostureRoute) -> Void
+    let onPop: () -> Void
 
     @State private var session = AVCaptureSession()
     @State private var photoOutput = AVCapturePhotoOutput()
@@ -12,21 +14,17 @@ struct PostureAnalysisCameraView: View {
 
     @State private var countdown = 15
     @State private var isCountingDown = false
-    @State private var countdownStarted = false
-
-    @State private var navigateToFlow = false
-    @State private var capturedImage: UIImage?
 
     @State private var photoDelegate: PhotoCaptureDelegate?
 
     var body: some View {
         ZStack {
 
-            /// カメラプレビュー
+            // MARK: - カメラプレビュー
             CameraPreview(session: session)
                 .ignoresSafeArea()
 
-            /// カウントダウン表示
+            // MARK: - カウントダウン表示
             if isCountingDown {
                 Text("\(countdown)")
                     .font(.system(size: 100, weight: .bold))
@@ -34,14 +32,14 @@ struct PostureAnalysisCameraView: View {
                     .shadow(radius: 10)
             }
 
-            /// UI
+            // MARK: - UI
             VStack {
 
-                /// 閉じる
+                // 閉じる（ガイドへ戻る）
                 HStack {
                     Button {
                         stopSession()
-                        dismiss()
+                        onPop()
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .font(.system(size: 28))
@@ -84,37 +82,16 @@ struct PostureAnalysisCameraView: View {
                     UIApplication.shared.open(url)
                 }
             }
-            Button("キャンセル", role: .cancel) { }
+            Button("キャンセル", role: .cancel) {}
         } message: {
             Text("姿勢分析を行うにはカメラの使用許可が必要です。")
         }
-        .navigationDestination(isPresented: $navigateToFlow) {
-            if let img = capturedImage {
-                PostureAnalysisFlowView(
-                    capturedImage: img,
-                    onRetake: {
-                        /// 戻って再撮影
-                        navigateToFlow = false
-                        capturedImage = nil
-                        resetCountdown()
-                        startSession()
-                    },
-                    onClose: {
-                        /// 完全に閉じる → ガイドへ戻る
-                        navigateToFlow = false
-                        capturedImage = nil
-                        stopSession()
-                        dismiss()
-                    }
-                )
-            } else {
-                LoadingFallbackView()
-            }
-        }
+        .navigationBarBackButtonHidden(true)
     }
 }
 
-// MARK: - カメラ制御 & 撮影処理
+
+// MARK: - カメラ制御 + 撮影処理（push 遷移版）
 extension PostureAnalysisCameraView {
 
     private func startCountdown() {
@@ -122,10 +99,10 @@ extension PostureAnalysisCameraView {
 
         countdown = 15
         isCountingDown = true
-        countdownStarted = true
 
         Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { timer in
             countdown -= 1
+
             if countdown == 0 {
                 timer.invalidate()
                 isCountingDown = false
@@ -134,32 +111,21 @@ extension PostureAnalysisCameraView {
         }
     }
 
-    private func resetCountdown() {
-        countdown = 15
-        isCountingDown = false
-        countdownStarted = false
-    }
-
     private func takePhoto() {
         let settings = AVCapturePhotoSettings()
 
         let delegate = PhotoCaptureDelegate { image in
             guard let image = image else { return }
 
-            DispatchQueue.main.async {
-                self.capturedImage = image
-            }
-
-            /// カメラ停止はバックグラウンドで安全に実施
+            // カメラ停止処理と push の順序を完全保証
             DispatchQueue.global(qos: .userInitiated).async {
+                session.stopRunning()
+                usleep(200_000)   // iOS16〜17 の安定卸下の定番
 
-                self.session.stopRunning()
-                usleep(200_000) // 0.2 秒：iOS16〜17で最も安定
-
-                /// 停止が完了してから遷移
                 DispatchQueue.main.async {
-                    self.navigateToFlow = true
-                    self.photoDelegate = nil
+                    // 🔥 FlowView（解析画面）へ push！
+                    onPush(.flow(image))
+                    photoDelegate = nil
                 }
             }
         }
@@ -170,14 +136,17 @@ extension PostureAnalysisCameraView {
 
     private func checkCameraPermissionAndConfigure() {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
+
         case .authorized:
             configureCamera()
+
         case .notDetermined:
             AVCaptureDevice.requestAccess(for: .video) { granted in
                 DispatchQueue.main.async {
                     granted ? configureCamera() : (permissionDenied = true)
                 }
             }
+
         default:
             permissionDenied = true
         }
@@ -186,12 +155,15 @@ extension PostureAnalysisCameraView {
     private func configureCamera() {
         session.beginConfiguration()
 
-        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera,
-                                                   for: .video,
-                                                   position: .front),
-              let input = try? AVCaptureDeviceInput(device: device) else {
-
-            print("❌ カメラデバイスの取得に失敗")
+        guard
+            let device = AVCaptureDevice.default(
+                .builtInWideAngleCamera,
+                for: .video,
+                position: .front
+            ),
+            let input = try? AVCaptureDeviceInput(device: device)
+        else {
+            print("❌ カメラデバイス取得失敗")
             session.commitConfiguration()
             return
         }
@@ -208,6 +180,7 @@ extension PostureAnalysisCameraView {
 
     private func startSession() {
         guard !isSessionRunning else { return }
+
         DispatchQueue.global(qos: .userInitiated).async {
             session.startRunning()
             DispatchQueue.main.async { isSessionRunning = true }
@@ -216,26 +189,10 @@ extension PostureAnalysisCameraView {
 
     private func stopSession() {
         guard isSessionRunning else { return }
+
         DispatchQueue.global(qos: .background).async {
             session.stopRunning()
             DispatchQueue.main.async { isSessionRunning = false }
-        }
-    }
-}
-
-/// 撮影画像が無い場合のフォールバック
-struct LoadingFallbackView: View {
-    var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-            VStack(spacing: 16) {
-                ProgressView()
-                    .scaleEffect(1.5)
-                    .tint(.white)
-                Text("画像を準備しています…")
-                    .foregroundColor(.white)
-                    .font(.headline)
-            }
         }
     }
 }

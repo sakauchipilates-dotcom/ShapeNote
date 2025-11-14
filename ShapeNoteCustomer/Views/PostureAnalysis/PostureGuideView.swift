@@ -1,9 +1,12 @@
 import SwiftUI
 
 struct PostureGuideView: View {
-    @Environment(\.dismiss) private var dismiss
+
+    // 🔥 CustomerRootView から渡される
+    let onPush: (PostureRoute) -> Void
+    let onPop: () -> Void
+
     @State private var step = 0
-    @State private var navigateToCamera = false
 
     private let steps: [GuideStep] = [
         GuideStep(
@@ -52,6 +55,7 @@ struct PostureGuideView: View {
 
             Spacer()
 
+            // 進む／撮影へ
             if step < steps.count - 1 {
                 Button {
                     withAnimation(.easeInOut) {
@@ -69,7 +73,8 @@ struct PostureGuideView: View {
                 }
             } else {
                 Button {
-                    navigateToCamera = true
+                    /// 🔥 Camera 画面へ push
+                    onPush(.camera)
                 } label: {
                     Label("撮影へ進む", systemImage: "camera.viewfinder")
                         .font(.headline)
@@ -82,17 +87,16 @@ struct PostureGuideView: View {
                 }
             }
 
+            // 🔥 pop（キャンセル→戻る）
             Button("キャンセル") {
-                dismiss()
+                onPop()
             }
             .foregroundColor(.gray)
             .padding(.top, 10)
 
             Spacer(minLength: 40)
         }
-        .navigationDestination(isPresented: $navigateToCamera) {
-            PostureAnalysisCameraView()
-        }
+        .navigationBarBackButtonHidden(true) // push最適化
     }
 }
 

@@ -1,15 +1,18 @@
 import SwiftUI
 
 struct PostureAnalysisFlowView: View {
+
     let capturedImage: UIImage
-    let onRetake: () -> Void      // カメラに戻る
-    let onClose: () -> Void       // ホームに戻る
+
+    // 🔥 Navigation を外部（CustomerRoot）から受け取る
+    let onPush: (PostureRoute) -> Void
+    let onPop: () -> Void            // Camera へ戻る
+    let onPopToRoot: () -> Void      // Home へ戻る
 
     @StateObject private var analyzer = PostureAnalyzer()
     @State private var state: AnalysisState = .loading
     @State private var started = false
-
-    @State private var pipelineTask: Task<Void, Never>? = nil  // ← ★重要：キャンセル用
+    @State private var pipelineTask: Task<Void, Never>? = nil
 
     enum AnalysisState {
         case loading
@@ -34,16 +37,15 @@ struct PostureAnalysisFlowView: View {
                 }
             }
             .onAppear {
-                guard !started else { return }   // 二重解析防止
+                guard !started else { return }
                 started = true
                 startPipeline()
             }
             .onDisappear {
-                // 画面遷移で FlowView が消えたら解析を中断
                 pipelineTask?.cancel()
             }
 
-        // MARK: - 解析成功 → 結果画面
+        // MARK: - 成功（→ ResultView に push）
         case .success(let result, let skeleton, let report):
             PostureResultView(
                 capturedImage: capturedImage,
@@ -51,20 +53,24 @@ struct PostureAnalysisFlowView: View {
                 skeletonImage: skeleton,
                 reportImage: report,
                 onRetake: {
+                    // 🔥 Flow → Camera に戻る
                     pipelineTask?.cancel()
-                    onRetake()
+                    onPop()
                 },
                 onClose: {
+                    // 🔥 Home に戻る
                     pipelineTask?.cancel()
-                    onClose()
+                    onPopToRoot()
                 }
             )
+            .navigationBarBackButtonHidden(true)
 
-        // MARK: - 解析失敗
+        // MARK: - 失敗画面
         case .failure(let message):
             ZStack {
                 Color.black.ignoresSafeArea()
                 VStack(spacing: 20) {
+
                     Text("解析に失敗しました。")
                         .foregroundColor(.white)
                         .font(.headline)
@@ -77,7 +83,7 @@ struct PostureAnalysisFlowView: View {
 
                     Button {
                         pipelineTask?.cancel()
-                        onRetake()
+                        onPop()   // → Camera
                     } label: {
                         Label("再撮影する", systemImage: "arrow.counterclockwise.circle.fill")
                             .font(.title3.bold())
@@ -91,7 +97,7 @@ struct PostureAnalysisFlowView: View {
 
                     Button {
                         pipelineTask?.cancel()
-                        onClose()
+                        onPopToRoot()
                     } label: {
                         Label("ホームへ戻る", systemImage: "house.fill")
                             .font(.title3.bold())
@@ -115,34 +121,29 @@ struct PostureAnalysisFlowView: View {
 
         pipelineTask = Task { [capturedImage] in
             do {
-                // Taskが途中でキャンセルされた場合に停止
                 try Task.checkCancellation()
 
                 // ① スコア解析
                 let analysis = try await analyzer.analyze(image: capturedImage)
-
                 try Task.checkCancellation()
 
-                // ② 骨格描画
+                // ② 骨格画像
                 let skeleton = try analyzer.drawSkeleton(on: capturedImage)
-
                 try Task.checkCancellation()
 
-                // ③ レポート生成
+                // ③ レポート画像
                 let report = analyzer.generateReportImage(from: skeleton, result: analysis)
-
                 try Task.checkCancellation()
 
-                // ④ Firestore 保存
+                // ④ Firestore 保存（失敗は無視）
                 try? await analyzer.saveResult(analysis)
 
-                // ⑤ UI更新
+                // ⑤ UI更新（成功 → 自動的に ResultView に切り替わる）
                 await MainActor.run {
                     state = .success(result: analysis, skeleton: skeleton, report: report)
                 }
 
             } catch is CancellationError {
-                // キャンセルされた場合は何もしない
                 print("⚠️ Pipeline canceled")
             } catch {
                 await MainActor.run {

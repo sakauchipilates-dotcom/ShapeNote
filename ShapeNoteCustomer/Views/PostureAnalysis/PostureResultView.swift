@@ -5,8 +5,10 @@ struct PostureResultView: View {
     let result: PostureResult
     let skeletonImage: UIImage
     let reportImage: UIImage
-    let onRetake: () -> Void
-    let onClose: () -> Void
+
+    // 🔥 pushDestination 用：コールバックは外部に移譲
+    let onRetake: () -> Void     // → FlowView → pop()
+    let onClose: () -> Void      // → FlowView → popToRoot()
 
     @State private var isSaving = false
 
@@ -16,7 +18,7 @@ struct PostureResultView: View {
 
             VStack(spacing: 20) {
 
-                // 解析後の骨格画像
+                // 解析画像
                 Image(uiImage: skeletonImage)
                     .resizable()
                     .scaledToFit()
@@ -29,8 +31,9 @@ struct PostureResultView: View {
 
                 Spacer()
 
-                // スコア部
+                // スコア
                 VStack(spacing: 16) {
+
                     Text("姿勢スコア")
                         .font(.headline)
                         .foregroundColor(.white.opacity(0.8))
@@ -47,7 +50,7 @@ struct PostureResultView: View {
                 }
                 .padding(.bottom, 40)
 
-                // ボタン
+                // ボタン群
                 VStack(spacing: 14) {
 
                     // 保存
@@ -63,7 +66,7 @@ struct PostureResultView: View {
                             .cornerRadius(12)
                     }
 
-                    // 再撮影
+                    // 再撮影（FlowView → Camera）
                     Button {
                         onRetake()
                     } label: {
@@ -76,7 +79,7 @@ struct PostureResultView: View {
                             .cornerRadius(12)
                     }
 
-                    // ホームへ戻る
+                    // ホームへ（FlowView → Root へ popToRoot）
                     Button {
                         onClose()
                     } label: {
@@ -93,7 +96,7 @@ struct PostureResultView: View {
                 .padding(.bottom, 40)
             }
         }
-        .navigationBarBackButtonHidden(true) // ← push最適化
+        .navigationBarBackButtonHidden(true)
         .alert("保存完了", isPresented: $isSaving) {
             Button("OK", role: .cancel) { }
         } message: {
@@ -101,7 +104,7 @@ struct PostureResultView: View {
         }
     }
 
-    // MARK: - 保存（バックグラウンドで実行）
+    // MARK: - 保存
     private func saveReport() {
         Task.detached {
             UIImageWriteToSavedPhotosAlbum(reportImage, nil, nil, nil)

@@ -2,8 +2,11 @@ import SwiftUI
 import AVFoundation
 
 struct PostureAnalysisView: View {
+
+    /// CustomerRootView から渡される push 操作
+    let push: (PostureRoute) -> Void
+
     @State private var showPermissionAlert = false
-    @State private var navigateToGuide = false
 
     var body: some View {
         VStack(spacing: 30) {
@@ -47,17 +50,13 @@ struct PostureAnalysisView: View {
             Spacer()
         }
         .navigationTitle("姿勢分析")
-        .navigationDestination(isPresented: $navigateToGuide) {
-            PostureGuideView()
-        }
-        // 権限アラート
         .alert("カメラアクセスが許可されていません", isPresented: $showPermissionAlert) {
             Button("設定を開く") {
                 if let url = URL(string: UIApplication.openSettingsURLString) {
                     UIApplication.shared.open(url)
                 }
             }
-            Button("キャンセル", role: .cancel) { }
+            Button("キャンセル", role: .cancel) {}
         } message: {
             Text("姿勢分析を行うにはカメラの使用許可が必要です。")
         }
@@ -68,7 +67,8 @@ struct PostureAnalysisView: View {
         AVCaptureDevice.requestAccess(for: .video) { granted in
             DispatchQueue.main.async {
                 if granted {
-                    navigateToGuide = true
+                    /// 🔥 NavigationStack の path に追加
+                    push(.guide)
                 } else {
                     showPermissionAlert = true
                 }
