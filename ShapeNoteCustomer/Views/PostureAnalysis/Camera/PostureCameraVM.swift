@@ -164,7 +164,11 @@ final class PostureCameraVM: NSObject, ObservableObject {
             DispatchQueue.main.async {
                 if let img = image {
                     print("DEBUG: 🟩 撮影成功 → image.size=\(img.size)")
-                    self.capturedImage = img
+
+                    // 元の向きを保ったまま「左右だけ」反転
+                    let mirrored = img.mirroredHorizontally()
+                    self.capturedImage = mirrored
+
                 } else {
                     print("DEBUG: ❌ 撮影画像 nil（PhotoCaptureHandler から）")
                 }
@@ -179,5 +183,26 @@ final class PostureCameraVM: NSObject, ObservableObject {
         // ハンドラをプロパティに保持してから capturePhoto を呼ぶ
         self.photoHandler = handler
         photoOutput.capturePhoto(with: settings, delegate: handler)
+    }
+}
+
+// MARK: - UIImage ユーティリティ（左右反転）
+private extension UIImage {
+    /// 画像の向きは維持したまま、「見た目」だけ左右反転した UIImage を返す
+    func mirroredHorizontally() -> UIImage {
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let image = renderer.image { _ in
+            guard let ctx = UIGraphicsGetCurrentContext() else {
+                draw(in: CGRect(origin: .zero, size: size))
+                return
+            }
+
+            // 右方向に width 分平行移動 → x を -1 倍にして左右反転
+            ctx.translateBy(x: size.width, y: 0)
+            ctx.scaleBy(x: -1, y: 1)
+
+            draw(in: CGRect(origin: .zero, size: size))
+        }
+        return image
     }
 }
