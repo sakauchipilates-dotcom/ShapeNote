@@ -13,31 +13,41 @@ struct PostureCaptureConfirmView: View {
         ZStack {
             Theme.gradientMain.ignoresSafeArea()
 
-            VStack(spacing: 24) {
+            VStack(spacing: 28) {
 
                 // MARK: - タイトル
                 Text("この写真でよろしいですか？")
                     .font(.title3.weight(.semibold))
-                    .foregroundColor(Theme.dark)
-                    .padding(.top, 20)
+                    .foregroundColor(Theme.dark.opacity(0.85))
+                    .padding(.top, 36)
 
-                // MARK: - 撮影画像
+                // MARK: - 撮影画像（ブランドカードスタイル）
                 if let img = cameraVM.capturedImage {
 
-                    Image(uiImage: img)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(maxWidth: UIScreen.main.bounds.width * 0.9)
-                        .cornerRadius(18)
-                        .shadow(color: Theme.dark.opacity(0.12), radius: 10, y: 6)
-                        .padding(.horizontal, 20)
-                        .padding(.top, 4)   // 少し下げて中央寄りに見せる
-                        .onAppear {
-                            print("DEBUG: 🟩 ConfirmView表示 画像サイズ=\(img.size)")
-                        }
+                    ZStack {
+                        // カード背景
+                        RoundedRectangle(cornerRadius: 24)
+                            .fill(Color.white.opacity(0.92))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 24)
+                                    .stroke(Theme.dark.opacity(0.06), lineWidth: 1)
+                            )
+                            .shadow(color: Theme.dark.opacity(0.12), radius: 10, y: 6)
+
+                        // 画像
+                        Image(uiImage: img)
+                            .resizable()
+                            .scaledToFit()
+                            .clipShape(RoundedRectangle(cornerRadius: 20))
+                            .padding(14)
+                    }
+                    .frame(maxWidth: UIScreen.main.bounds.width * 0.88)
+                    .padding(.horizontal, 16)
+                    .onAppear {
+                        print("DEBUG: 🟩 ConfirmView表示 画像サイズ=\(img.size)")
+                    }
 
                 } else {
-
                     VStack(spacing: 12) {
                         Text("画像が読み込めませんでした。")
                             .font(.headline)
@@ -62,26 +72,26 @@ struct PostureCaptureConfirmView: View {
                     systemImage: "arrow.counterclockwise.circle.fill",
                     background: Theme.sub
                 ) {
-                    print("DEBUG: 🔄 撮り直す tapped")
                     onRetake()
                 }
-                .padding(.horizontal, 40)
-                .padding(.bottom, 8)
+                .frame(maxWidth: 300)
+                .padding(.horizontal)
 
-                // MARK: - OKボタン（分析へ）
+                // MARK: - OKボタン
                 GlassButton(
                     title: "OK",
                     systemImage: "checkmark.circle.fill",
                     background: Theme.accent
                 ) {
-                    print("DEBUG: ▶︎ OK tapped")
                     onConfirm()
                 }
-                .padding(.horizontal, 40)
+                .frame(maxWidth: 300)
+                .padding(.horizontal)
 
                 Spacer().frame(height: 32)
             }
         }
+        .interactiveDismissDisabled(true)
         .navigationBarBackButtonHidden(true)
     }
 }
