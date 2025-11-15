@@ -7,8 +7,8 @@ public struct Theme {
     public static let dark = Color(hex: "#4a4a4a")     // ダークグレー（テキスト）
     public static let accent = Color(hex: "#eaae79")   // サンドオレンジ（アクセント）
 
-    // MARK: - Gradients（追加）
-    /// メイン背景用の縦グラデーション（上：白 → 下：ベージュ）
+    // MARK: - Gradients
+    /// メイン背景（白→ベージュ）
     public static let gradientMain = LinearGradient(
         colors: [
             Color.white,
@@ -18,7 +18,7 @@ public struct Theme {
         endPoint: .bottom
     )
 
-    /// カード背景用の柔らかいグラデーション（ベージュ層）
+    /// カード背景
     public static let gradientCard = LinearGradient(
         colors: [
             Theme.main.opacity(0.95),
@@ -38,7 +38,7 @@ public struct Theme {
     public static let body = Font.system(size: 14)
 }
 
-// MARK: - HEXカラー拡張（Dynamic Color対応版）
+// MARK: - HEXカラー拡張（Dynamic Color対応）
 public extension Color {
     init(hex: String) {
         var hexString = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
@@ -47,15 +47,17 @@ public extension Color {
 
         let a, r, g, b: UInt64
         switch hexString.count {
-        case 3: // RGB (12-bit)
-            (a, r, g, b) = (255, (int >> 8) * 17,
+        case 3:
+            (a, r, g, b) = (255,
+                            (int >> 8) * 17,
                             (int >> 4 & 0xF) * 17,
                             (int & 0xF) * 17)
-        case 6: // RGB (24-bit)
-            (a, r, g, b) = (255, int >> 16,
+        case 6:
+            (a, r, g, b) = (255,
+                            int >> 16,
                             int >> 8 & 0xFF,
                             int & 0xFF)
-        case 8: // ARGB (32-bit)
+        case 8:
             (a, r, g, b) = (int >> 24,
                             int >> 16 & 0xFF,
                             int >> 8 & 0xFF,
@@ -64,7 +66,6 @@ public extension Color {
             (a, r, g, b) = (255, 0, 0, 0)
         }
 
-        // ✅ Dynamic Color対応（UIKit経由）
         self = Color(UIColor(
             red: CGFloat(r) / 255.0,
             green: CGFloat(g) / 255.0,
