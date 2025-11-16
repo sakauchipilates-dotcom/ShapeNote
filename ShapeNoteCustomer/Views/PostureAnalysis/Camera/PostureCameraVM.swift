@@ -28,6 +28,9 @@ final class PostureCameraVM: NSObject, ObservableObject {
     /// 撮影中の PhotoCaptureHandler を強参照で保持するためのプロパティ
     private var photoHandler: PhotoCaptureHandler?
 
+    /// capture 用のシリアルキュー
+    private let captureQueue = DispatchQueue(label: "PostureCameraCaptureQueue")
+
     override init() {
         super.init()
     }
@@ -98,8 +101,8 @@ final class PostureCameraVM: NSObject, ObservableObject {
                 self.session.startRunning()
             }
             DispatchQueue.main.async {
-                self.isSessionRunning = true
-                print("DEBUG: ▶︎ Session running")
+                self.isSessionRunning = self.session.isRunning
+                print("DEBUG: ▶︎ Session running = \(self.isSessionRunning)")
             }
         }
     }
@@ -148,61 +151,76 @@ final class PostureCameraVM: NSObject, ObservableObject {
         }
     }
 
-    // MARK: - 撮影（PhotoCaptureHandler を使用）
+    // MARK: - 撮影（セッション準備のリトライ込み）
     func capturePhoto(onFinish: @escaping () -> Void) {
         print("DEBUG: 📸 VM.capturePhoto()")
 
-        let settings = AVCapturePhotoSettings()
-
-        // 既存のハンドラを一旦クリア
+        // 以前のハンドラをクリア
         photoHandler = nil
 
-        // 強参照で保持するハンドラを生成
+        let settings = AVCapturePhotoSettings()
+
+        // セッション準備 → 撮影 をリトライ付きで実行
+        internalCapturePhoto(settings: settings, retryCount: 0, onFinish: onFinish)
+    }
+
+    /// 実際の撮影処理（セッション準備を見て最大3回までリトライ）
+    private func internalCapturePhoto(
+        settings: AVCapturePhotoSettings,
+        retryCount: Int,
+        onFinish: @escaping () -> Void
+    ) {
+        let maxRetries = 3
+
+        // 現在のセッション状態をチェック
+        let isReady = session.isRunning &&
+                      !session.inputs.isEmpty &&
+                      !session.outputs.isEmpty
+
+        guard isReady else {
+            print("""
+            DEBUG: ⚠️ capturePhoto スキップ: session not ready \
+            (isRunning=\(session.isRunning), inputs=\(session.inputs.count), outputs=\(session.outputs.count), retry=\(retryCount))
+            """)
+
+            if retryCount < maxRetries {
+                // セッションを起動して少し待って再トライ
+                startSession()
+                let delay: TimeInterval = 0.25
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                    self?.internalCapturePhoto(
+                        settings: settings,
+                        retryCount: retryCount + 1,
+                        onFinish: onFinish
+                    )
+                }
+            } else {
+                print("DEBUG: ❌ capturePhoto 断念: session が準備完了にならず")
+                onFinish()
+            }
+            return
+        }
+
+        print("DEBUG: ▶︎ capturePhoto 実行 (retry=\(retryCount))")
+
+        // ここから実際の撮影
         let handler = PhotoCaptureHandler { [weak self] image in
             guard let self else { return }
 
             DispatchQueue.main.async {
                 if let img = image {
                     print("DEBUG: 🟩 撮影成功 → image.size=\(img.size)")
-
-                    // 元の向きを保ったまま「左右だけ」反転
-                    let mirrored = img.mirroredHorizontally()
-                    self.capturedImage = mirrored
-
+                    self.capturedImage = img
                 } else {
                     print("DEBUG: ❌ 撮影画像 nil（PhotoCaptureHandler から）")
                 }
 
-                // 撮影完了後はハンドラ参照を解放
                 self.photoHandler = nil
-
                 onFinish()
             }
         }
 
-        // ハンドラをプロパティに保持してから capturePhoto を呼ぶ
         self.photoHandler = handler
         photoOutput.capturePhoto(with: settings, delegate: handler)
-    }
-}
-
-// MARK: - UIImage ユーティリティ（左右反転）
-private extension UIImage {
-    /// 画像の向きは維持したまま、「見た目」だけ左右反転した UIImage を返す
-    func mirroredHorizontally() -> UIImage {
-        let renderer = UIGraphicsImageRenderer(size: size)
-        let image = renderer.image { _ in
-            guard let ctx = UIGraphicsGetCurrentContext() else {
-                draw(in: CGRect(origin: .zero, size: size))
-                return
-            }
-
-            // 右方向に width 分平行移動 → x を -1 倍にして左右反転
-            ctx.translateBy(x: size.width, y: 0)
-            ctx.scaleBy(x: -1, y: 1)
-
-            draw(in: CGRect(origin: .zero, size: size))
-        }
-        return image
     }
 }
