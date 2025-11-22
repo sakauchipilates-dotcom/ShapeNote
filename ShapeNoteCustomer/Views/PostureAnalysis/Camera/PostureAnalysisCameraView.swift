@@ -9,14 +9,20 @@ struct PostureAnalysisCameraView: View {
     let onClose: () -> Void
     let onCaptured: () -> Void
 
+    @State private var showErrorAlert: Bool = false
+    @State private var errorMessage: String = ""
+
     var body: some View {
         ZStack {
 
+            // MARK: - カメラプレビュー（最背面）
             CameraPreview(session: cameraVM.captureSession)
                 .ignoresSafeArea()
 
+            // ガイド線
             CameraGuideOverlay()
 
+            // MARK: - カウントダウン
             if cameraVM.isCountingDown {
                 CircleCountdown(
                     count: cameraVM.countdown,
@@ -24,6 +30,7 @@ struct PostureAnalysisCameraView: View {
                 )
             }
 
+            // MARK: - 上部 UI
             VStack {
                 HStack {
                     Button {
@@ -37,9 +44,9 @@ struct PostureAnalysisCameraView: View {
                     }
                     Spacer()
                 }
-
                 Spacer()
 
+                // MARK: - 撮影開始ボタン（カウントダウン中は非表示）
                 if !cameraVM.isCountingDown {
                     VStack(spacing: 20) {
 
@@ -61,6 +68,62 @@ struct PostureAnalysisCameraView: View {
                     .padding(.bottom, 60)
                 }
             }
+
+            // ===================================================
+            // MARK: - UI オーバーレイ（state 紐付け）
+            // ===================================================
+
+            switch cameraVM.state {
+
+            // -------------------------------------------------------
+            // ① 準備中 overlay
+            // -------------------------------------------------------
+            case .preparing:
+                Color.white.opacity(0.75)
+                    .ignoresSafeArea()
+                    .overlay(
+                        VStack(spacing: 16) {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle())
+                            Text("カメラを準備しています…")
+                                .font(.headline)
+                                .foregroundColor(Theme.dark)
+                        }
+                    )
+
+            // -------------------------------------------------------
+            // ② 権限リクエスト中（タッチ無効化のみ）
+            // -------------------------------------------------------
+            case .requestingPermission:
+                Color.clear
+                    .ignoresSafeArea()
+                    .allowsHitTesting(true) // 全タッチ無効化
+
+            // -------------------------------------------------------
+            // ④ 撮影中 overlay（軽いフェード）
+            // -------------------------------------------------------
+            case .capturing:
+                Color.black.opacity(0.25)
+                    .ignoresSafeArea()
+                    .overlay(
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle())
+                    )
+
+            // -------------------------------------------------------
+            // ⑤ エラー（alertを外で表示）
+            // -------------------------------------------------------
+            case .error(let msg):
+                Color.black.opacity(0.35)
+                    .ignoresSafeArea()
+                    .onAppear {
+                        errorMessage = msg
+                        showErrorAlert = true
+                    }
+
+            default:
+                EmptyView()
+            }
         }
         .onAppear {
             print("DEBUG: 📷 CameraView appeared")
@@ -69,21 +132,25 @@ struct PostureAnalysisCameraView: View {
         }
         .onDisappear {
             if cameraVM.freezeDisappear {
-                print("DEBUG: 📷 CameraView disappeared (freeze中) → stopSession スキップ")
+                print("DEBUG: 📷 disappear (freeze中) → stopSession SKIP")
                 return
             }
-            print("DEBUG: 📷 CameraView disappeared → stop session")
             cameraVM.stopSession()
         }
-        .alert("カメラアクセスが必要です", isPresented: $cameraVM.permissionDenied) {
-            Button("設定を開く") {
-                if let url = URL(string: UIApplication.openSettingsURLString) {
-                    UIApplication.shared.open(url)
-                }
+        .alert("エラーが発生しました", isPresented: $showErrorAlert) {
+
+            Button("再試行") {
+                cameraVM.reset()
+                cameraVM.requestPermissionIfNeeded()
+                cameraVM.configureSessionIfNeeded()
             }
-            Button("キャンセル", role: .cancel) {}
+
+            Button("閉じる", role: .cancel) {
+                onClose()
+            }
+
         } message: {
-            Text("姿勢分析を行うにはカメラの使用許可が必要です。")
+            Text(errorMessage)
         }
         .navigationBarBackButtonHidden(true)
     }
@@ -101,20 +168,13 @@ extension PostureAnalysisCameraView {
         print("DEBUG: ▶︎ CameraView.takePhoto() 呼び出し")
 
         cameraVM.freezeDisappear = true
-        print("DEBUG: freezeDisappear = true")
 
         cameraVM.capturePhoto {
-            print("DEBUG: ▶︎ CameraView.onFinish 撮影終了")
-
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                 self.cameraVM.freezeDisappear = false
-                print("DEBUG: freezeDisappear = false（confirm 遷移直前）")
 
                 if self.cameraVM.capturedImage != nil {
-                    print("DEBUG: 🟢 撮影画像あり → confirmへ遷移")
                     self.onCaptured()
-                } else {
-                    print("DEBUG: 🔴 撮影画像 nil → 遷移しない")
                 }
             }
         }

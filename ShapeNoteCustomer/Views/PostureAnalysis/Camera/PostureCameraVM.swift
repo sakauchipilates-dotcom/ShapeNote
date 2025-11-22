@@ -2,30 +2,43 @@ import SwiftUI
 import AVFoundation
 import Combine
 
+// MARK: - CameraState
+enum CameraState: Equatable {
+    case idle
+    case requestingPermission
+    case permissionDenied
+    case preparing
+    case ready
+    case countingDown
+    case capturing
+    case finished
+    case error(String)
+}
+
 final class PostureCameraVM: NSObject, ObservableObject {
 
-    // MARK: - 公開状態（View が読む）
-    @Published var capturedImage: UIImage? = nil          // 撮影画像
-    @Published var isSessionRunning: Bool = false         // セッション稼働中フラグ
-    @Published var permissionDenied: Bool = false         // 権限NG
+    // MARK: - 公開状態
+    @Published var capturedImage: UIImage? = nil
+    @Published var isSessionRunning: Bool = false
+    @Published var permissionDenied: Bool = false
 
-    // カウントダウン（秒）
     @Published var countdown: Int = 15
     let countdownTotal: Int = 15
     @Published var isCountingDown: Bool = false
 
-    /// 撮影直後に onDisappear 側の stopSession を抑制するフラグ
+    /// onDisappear → stopSession を抑制
     @Published var freezeDisappear: Bool = false
 
-    // MARK: - AVFoundation 基本構造
+    /// 新規追加（状態管理）
+    @Published var state: CameraState = .idle
+
+    // MARK: - AVFoundation 基盤
     fileprivate let session = AVCaptureSession()
     private let photoOutput = AVCapturePhotoOutput()
 
     var captureSession: AVCaptureSession { session }
 
     private var countdownTimer: Timer?
-
-    /// 撮影中の PhotoCaptureHandler を強参照で保持するためのプロパティ
     private var photoHandler: PhotoCaptureHandler?
 
     /// capture 用のシリアルキュー
@@ -35,38 +48,57 @@ final class PostureCameraVM: NSObject, ObservableObject {
         super.init()
     }
 
-    // MARK: - リセット（Flow 開始時に呼ぶ想定）
+    // MARK: - リセット（Flow 開始時）
     func reset() {
         print("DEBUG: 🔁 CameraVM.reset()")
+
         capturedImage = nil
         countdown = countdownTotal
         isCountingDown = false
         freezeDisappear = false
+
+        state = .idle
     }
 
-    // MARK: - 権限確認
+    // MARK: - ① 権限確認（state 紐付け）
     func requestPermissionIfNeeded() {
+
+        state = .requestingPermission
+
         switch AVCaptureDevice.authorizationStatus(for: .video) {
+
         case .authorized:
-            break
+            // 権限OK → 特に変更しない
+            return
 
         case .notDetermined:
             AVCaptureDevice.requestAccess(for: .video) { granted in
                 DispatchQueue.main.async {
-                    self.permissionDenied = !granted
-                    print("DEBUG: 🎛 Camera permission granted=\(granted)")
+                    if granted {
+                        self.permissionDenied = false
+                        print("DEBUG: 🎛 Camera permission granted")
+                        // 次はセッション準備へ進むので state は変えない（= preparing で反映）
+                    } else {
+                        self.permissionDenied = true
+                        self.state = .permissionDenied
+                        print("DEBUG: ❌ Camera permission denied")
+                    }
                 }
             }
 
         default:
             permissionDenied = true
+            state = .permissionDenied
         }
     }
 
-    // MARK: - セッション構成（必要ならセットアップ）
+    // MARK: - ② セッション準備（state 紐付け）
     func configureSessionIfNeeded() {
+
+        state = .preparing
+
         guard session.inputs.isEmpty else {
-            // 既に構成済みならそのまま開始だけ
+            // 構成済 → すぐスタート
             startSession()
             return
         }
@@ -80,6 +112,7 @@ final class PostureCameraVM: NSObject, ObservableObject {
             let input = try? AVCaptureDeviceInput(device: device)
         else {
             print("DEBUG: ❌ Camera device / input の取得に失敗")
+            state = .error("カメラデバイスの取得に失敗しました")
             session.commitConfiguration()
             return
         }
@@ -87,29 +120,33 @@ final class PostureCameraVM: NSObject, ObservableObject {
         if session.canAddInput(input) { session.addInput(input) }
         if session.canAddOutput(photoOutput) { session.addOutput(photoOutput) }
 
-        // 端末によってはこれがないと delegate が呼ばれないケースがある
         photoOutput.isHighResolutionCaptureEnabled = true
 
         session.commitConfiguration()
         startSession()
     }
 
-    // MARK: - セッション開始
+    // MARK: - セッション開始（準備完了 → ready）
     func startSession() {
         DispatchQueue.global(qos: .userInitiated).async {
+
             if !self.session.isRunning {
                 self.session.startRunning()
             }
+
             DispatchQueue.main.async {
                 self.isSessionRunning = self.session.isRunning
                 print("DEBUG: ▶︎ Session running = \(self.isSessionRunning)")
+
+                if self.isSessionRunning {
+                    self.state = .ready
+                }
             }
         }
     }
 
     // MARK: - セッション停止
     func stopSession() {
-        // カウントダウンは必ず止める
         countdownTimer?.invalidate()
         countdownTimer = nil
         isCountingDown = false
@@ -117,28 +154,28 @@ final class PostureCameraVM: NSObject, ObservableObject {
         DispatchQueue.global(qos: .userInitiated).async {
             if self.session.isRunning {
                 self.session.stopRunning()
-                DispatchQueue.main.async {
-                    self.isSessionRunning = false
-                    print("DEBUG: ▶︎ Session stopped")
-                }
-            } else {
-                DispatchQueue.main.async {
-                    self.isSessionRunning = false
-                }
+            }
+            DispatchQueue.main.async {
+                self.isSessionRunning = false
+                print("DEBUG: ▶︎ Session stopped")
             }
         }
     }
 
-    // MARK: - カウントダウン（15秒）
+    // MARK: - ③ カウントダウン開始（state 紐付け）
     func startCountdown(onFinish: @escaping () -> Void) {
         print("DEBUG: ▶︎ startCountdown()")
-        countdownTimer?.invalidate()
 
+        state = .countingDown
+
+        countdownTimer?.invalidate()
         countdown = countdownTotal
         isCountingDown = true
 
-        countdownTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] timer in
+        countdownTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) {
+            [weak self] timer in
             guard let self else { return }
+
             self.countdown -= 1
             print("DEBUG: countdown = \(self.countdown)")
 
@@ -151,20 +188,23 @@ final class PostureCameraVM: NSObject, ObservableObject {
         }
     }
 
-    // MARK: - 撮影（セッション準備のリトライ込み）
+    // MARK: - ④ 撮影（state 紐付け）
     func capturePhoto(onFinish: @escaping () -> Void) {
         print("DEBUG: 📸 VM.capturePhoto()")
 
-        // 以前のハンドラをクリア
-        photoHandler = nil
+        state = .capturing
 
+        photoHandler = nil
         let settings = AVCapturePhotoSettings()
 
-        // セッション準備 → 撮影 をリトライ付きで実行
-        internalCapturePhoto(settings: settings, retryCount: 0, onFinish: onFinish)
+        internalCapturePhoto(
+            settings: settings,
+            retryCount: 0,
+            onFinish: onFinish
+        )
     }
 
-    /// 実際の撮影処理（セッション準備を見て最大3回までリトライ）
+    // MARK: - 内部撮影処理
     private func internalCapturePhoto(
         settings: AVCapturePhotoSettings,
         retryCount: Int,
@@ -172,22 +212,22 @@ final class PostureCameraVM: NSObject, ObservableObject {
     ) {
         let maxRetries = 3
 
-        // 現在のセッション状態をチェック
         let isReady = session.isRunning &&
                       !session.inputs.isEmpty &&
                       !session.outputs.isEmpty
 
         guard isReady else {
+
             print("""
             DEBUG: ⚠️ capturePhoto スキップ: session not ready \
             (isRunning=\(session.isRunning), inputs=\(session.inputs.count), outputs=\(session.outputs.count), retry=\(retryCount))
             """)
 
             if retryCount < maxRetries {
-                // セッションを起動して少し待って再トライ
                 startSession()
-                let delay: TimeInterval = 0.25
-                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    [weak self] in
                     self?.internalCapturePhoto(
                         settings: settings,
                         retryCount: retryCount + 1,
@@ -195,7 +235,8 @@ final class PostureCameraVM: NSObject, ObservableObject {
                     )
                 }
             } else {
-                print("DEBUG: ❌ capturePhoto 断念: session が準備完了にならず")
+                print("DEBUG: ❌ capturePhoto 断念")
+                state = .error("撮影に失敗しました")
                 onFinish()
             }
             return
@@ -203,7 +244,6 @@ final class PostureCameraVM: NSObject, ObservableObject {
 
         print("DEBUG: ▶︎ capturePhoto 実行 (retry=\(retryCount))")
 
-        // ここから実際の撮影
         let handler = PhotoCaptureHandler { [weak self] image in
             guard let self else { return }
 
@@ -211,8 +251,10 @@ final class PostureCameraVM: NSObject, ObservableObject {
                 if let img = image {
                     print("DEBUG: 🟩 撮影成功 → image.size=\(img.size)")
                     self.capturedImage = img
+                    self.state = .finished      // ⑤ 撮影完了
                 } else {
-                    print("DEBUG: ❌ 撮影画像 nil（PhotoCaptureHandler から）")
+                    print("DEBUG: ❌ 撮影画像 nil")
+                    self.state = .error("撮影画像の取得に失敗しました")
                 }
 
                 self.photoHandler = nil
