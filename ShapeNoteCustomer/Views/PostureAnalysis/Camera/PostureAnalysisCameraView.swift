@@ -34,6 +34,8 @@ struct PostureAnalysisCameraView: View {
             VStack {
                 HStack {
                     Button {
+                        // 明示的に freeze を解除してからセッション停止
+                        cameraVM.freezeDisappear = false
                         cameraVM.stopSession()
                         onClose()
                     } label: {
@@ -131,10 +133,12 @@ struct PostureAnalysisCameraView: View {
             cameraVM.configureSessionIfNeeded()
         }
         .onDisappear {
+            // 撮影直後の遷移時は stopSession をスキップ
             if cameraVM.freezeDisappear {
                 print("DEBUG: 📷 disappear (freeze中) → stopSession SKIP")
                 return
             }
+            print("DEBUG: 📷 disappear → stopSession()")
             cameraVM.stopSession()
         }
         .alert("エラーが発生しました", isPresented: $showErrorAlert) {
@@ -156,6 +160,7 @@ struct PostureAnalysisCameraView: View {
     }
 }
 
+// MARK: - 撮影ロジック
 extension PostureAnalysisCameraView {
 
     private func startCountdown() {
@@ -167,14 +172,22 @@ extension PostureAnalysisCameraView {
     private func takePhoto() {
         print("DEBUG: ▶︎ CameraView.takePhoto() 呼び出し")
 
+        // 撮影中に onDisappear が走っても stopSession されないようにフラグを立てる
         cameraVM.freezeDisappear = true
 
         cameraVM.capturePhoto {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                self.cameraVM.freezeDisappear = false
-
+            // ここでは freezeDisappear を解除しない
+            // → Confirm 画面に遷移してから Flow 側で解除する
+            DispatchQueue.main.async {
                 if self.cameraVM.capturedImage != nil {
+                    print("DEBUG: 🟢 撮影画像あり → onCaptured 呼び出し")
                     self.onCaptured()
+                } else {
+                    print("DEBUG: 🔴 撮影画像 nil（CameraView 側）")
+                    self.errorMessage = "撮影画像の取得に失敗しました"
+                    self.showErrorAlert = true
+                    // 失敗時は freeze を解除して再試行できるようにする
+                    self.cameraVM.freezeDisappear = false
                 }
             }
         }

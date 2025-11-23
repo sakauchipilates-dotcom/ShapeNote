@@ -27,6 +27,7 @@ struct PostureCameraFlowView: View {
                 PostureAnalysisCameraView(
                     onClose: {
                         // フローを閉じる前に状態をリセットしておくと安全
+                        cameraVM.freezeDisappear = false
                         cameraVM.reset()
                         dismiss()
                     },
@@ -44,18 +45,27 @@ struct PostureCameraFlowView: View {
                 PostureCaptureConfirmView(
                     // 撮り直し → カメラへ戻る
                     onRetake: {
-                        // セッション状態・カウンタなどをクリーンに戻してから
-                        // カメラ画面に戻る
+                        // 再度カメラに戻る前にフラグ・状態をリセット
+                        cameraVM.freezeDisappear = false
                         cameraVM.reset()
                         step = .camera
                     },
                     // OK → 分析へ
                     onConfirm: {
+                        // Confirm に入った時点でセッションは既に止まっている想定
+                        // ここで state を finished にして解析へ渡す
+                        cameraVM.state = .finished
                         analysisImage = cameraVM.capturedImage
                         step = .analysis
                     }
                 )
                 .environmentObject(cameraVM)
+                .onAppear {
+                    // CameraView の onDisappear が終わった後なので、
+                    // ここで初めて freezeDisappear を解除してよい
+                    print("DEBUG: 📷 Confirm step appeared → freezeDisappear = false")
+                    cameraVM.freezeDisappear = false
+                }
 
             // =====================================================
             // MARK: - STEP 3: 分析画面
@@ -66,13 +76,11 @@ struct PostureCameraFlowView: View {
                         capturedImage: image,
                         // 「再撮影する」
                         onPop: {
-                            // 分析 → カメラに戻るときも必ずリセット
                             cameraVM.reset()
                             step = .camera
                         },
                         // 「ホームに戻る」（フローを完全に閉じる）
                         onPopToRoot: {
-                            // 終了前に状態をクリーンに
                             cameraVM.reset()
                             dismiss()
                         }
@@ -93,6 +101,11 @@ struct PostureCameraFlowView: View {
                 }
             }
         }
-        // ★ ここにあった onAppear { cameraVM.reset() } は削除
+        // Flow 開始時に一度だけクリーン状態にしておく
+        .onAppear {
+            print("DEBUG: 📷 FlowView appeared → cameraVM.reset()")
+            cameraVM.freezeDisappear = false
+            cameraVM.reset()
+        }
     }
 }

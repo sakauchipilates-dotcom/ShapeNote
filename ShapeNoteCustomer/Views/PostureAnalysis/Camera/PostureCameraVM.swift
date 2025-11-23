@@ -29,7 +29,7 @@ final class PostureCameraVM: NSObject, ObservableObject {
     /// onDisappear → stopSession を抑制
     @Published var freezeDisappear: Bool = false
 
-    /// 新規追加（状態管理）
+    /// 状態管理
     @Published var state: CameraState = .idle
 
     // MARK: - AVFoundation 基盤
@@ -68,7 +68,7 @@ final class PostureCameraVM: NSObject, ObservableObject {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
 
         case .authorized:
-            // 権限OK → 特に変更しない
+            // すでに許可済み
             return
 
         case .notDetermined:
@@ -77,7 +77,6 @@ final class PostureCameraVM: NSObject, ObservableObject {
                     if granted {
                         self.permissionDenied = false
                         print("DEBUG: 🎛 Camera permission granted")
-                        // 次はセッション準備へ進むので state は変えない（= preparing で反映）
                     } else {
                         self.permissionDenied = true
                         self.state = .permissionDenied
@@ -250,8 +249,11 @@ final class PostureCameraVM: NSObject, ObservableObject {
             DispatchQueue.main.async {
                 if let img = image {
                     print("DEBUG: 🟩 撮影成功 → image.size=\(img.size)")
+                    print("DEBUG: orientation raw = \(img.imageOrientation.rawValue)")
+                    print("DEBUG: scale = \(img.scale)")
+
                     self.capturedImage = img
-                    self.state = .finished      // ⑤ 撮影完了
+                    self.state = .finished      // 撮影完了
                 } else {
                     print("DEBUG: ❌ 撮影画像 nil")
                     self.state = .error("撮影画像の取得に失敗しました")

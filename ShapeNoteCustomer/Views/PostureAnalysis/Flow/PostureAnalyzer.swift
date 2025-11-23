@@ -34,16 +34,31 @@ final class PostureAnalyzer: ObservableObject {
     // =================================================================
     func detectBodyPoints(in image: UIImage) throws -> [VNHumanBodyPoseObservation.JointName : VNRecognizedPoint] {
 
-        guard let cgImage = image.cgImage else {
-            throw NSError(domain: "Pose", code: -1, userInfo: [NSLocalizedDescriptionKey: "画像を読み込めません"])
+        // Vision 用にサイズを最大 1080px にリサイズ（アスペクト比維持）
+        let visionImage = image.resizedForVision(maxDimension: 1080)
+        print("DEBUG: Vision input size = \(visionImage.size)")
+
+        guard let cgImage = visionImage.cgImage else {
+            throw NSError(
+                domain: "Pose",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "画像を読み込めません"]
+            )
         }
 
         let request = VNDetectHumanBodyPoseRequest()
-        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+        // orientation は fixedForFrontCamera / resizedForVision 側で .up にそろえている想定
+        let handler = VNImageRequestHandler(cgImage: cgImage,
+                                            orientation: .up,
+                                            options: [:])
         try handler.perform([request])
 
         guard let obs = request.results?.first else {
-            throw NSError(domain: "Pose", code: -2, userInfo: [NSLocalizedDescriptionKey: "姿勢を検出できません"])
+            throw NSError(
+                domain: "Pose",
+                code: -2,
+                userInfo: [NSLocalizedDescriptionKey: "姿勢を検出できません"]
+            )
         }
 
         let allPoints = try obs.recognizedPoints(.all)
@@ -210,7 +225,7 @@ final class PostureAnalyzer: ObservableObject {
             cg.setFillColor(UIColor.systemYellow.cgColor)
             for (_, p) in points where p.confidence > 0.3 {
                 let pos = pt(p)
-                cg.fillEllipse(in: CGRect(x: pos.x-8, y: pos.y-8, width: 16, height: 16))
+                cg.fillEllipse(in: CGRect(x: pos.x - 8, y: pos.y - 8, width: 16, height: 16))
             }
         }
     }
@@ -260,5 +275,33 @@ final class PostureAnalyzer: ObservableObject {
                 ]
             )
         }
+    }
+}
+
+// =====================================================
+// MARK: - UIImage ヘルパー（Vision 用リサイズ）
+// =====================================================
+private extension UIImage {
+
+    /// Vision 用に、最大辺が maxDimension を超える場合だけ
+    /// アスペクト比を保ったまま縮小する
+    func resizedForVision(maxDimension: CGFloat = 1080) -> UIImage {
+
+        let width  = size.width
+        let height = size.height
+        let maxSide = max(width, height)
+
+        // すでに十分小さい場合はそのまま返す
+        guard maxSide > maxDimension else { return self }
+
+        let scale = maxDimension / maxSide
+        let newSize = CGSize(width: width * scale, height: height * scale)
+
+        let renderer = UIGraphicsImageRenderer(size: newSize)
+        let result = renderer.image { _ in
+            self.draw(in: CGRect(origin: .zero, size: newSize))
+        }
+
+        return result
     }
 }
