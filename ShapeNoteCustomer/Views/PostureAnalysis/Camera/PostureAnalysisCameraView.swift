@@ -7,7 +7,7 @@ struct PostureAnalysisCameraView: View {
     @EnvironmentObject var cameraVM: PostureCameraVM
 
     let onClose: () -> Void
-    let onCaptured: () -> Void
+    let onCaptured: () -> Void   // 4枚揃ったら呼ぶ
 
     @State private var showErrorAlert: Bool = false
     @State private var errorMessage: String = ""
@@ -15,14 +15,13 @@ struct PostureAnalysisCameraView: View {
     var body: some View {
         ZStack {
 
-            // MARK: - カメラプレビュー（最背面）
             CameraPreview(session: cameraVM.captureSession)
                 .ignoresSafeArea()
 
-            // ガイド線
             CameraGuideOverlay()
 
-            // MARK: - カウントダウン
+            topOverlay
+
             if cameraVM.isCountingDown {
                 CircleCountdown(
                     count: cameraVM.countdown,
@@ -30,91 +29,29 @@ struct PostureAnalysisCameraView: View {
                 )
             }
 
-            // MARK: - 上部 UI
-            VStack {
-                HStack {
-                    Button {
-                        // 明示的に freeze を解除してからセッション停止
-                        cameraVM.freezeDisappear = false
-                        cameraVM.stopSession()
-                        onClose()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 32))
-                            .foregroundColor(.white.opacity(0.9))
-                            .padding()
-                    }
-                    Spacer()
-                }
-                Spacer()
-
-                // MARK: - 撮影開始ボタン（カウントダウン中は非表示）
-                if !cameraVM.isCountingDown {
-                    VStack(spacing: 20) {
-
-                        Text(cameraVM.permissionDenied
-                             ? "カメラアクセスが許可されていません。"
-                             : "位置を調整し、撮影ボタンを押してください。")
-                            .font(Theme.subtitle)
-                            .foregroundColor(.white.opacity(0.9))
-                            .padding(.bottom, 10)
-
-                        GlassButton(
-                            title: "撮影を開始",
-                            systemImage: "camera.circle.fill",
-                            background: Theme.sub
-                        ) {
-                            startCountdown()
-                        }
-                    }
-                    .padding(.bottom, 60)
-                }
-            }
-
-            // ===================================================
-            // MARK: - UI オーバーレイ（state 紐付け）
-            // ===================================================
+            bottomUI
 
             switch cameraVM.state {
-
-            // -------------------------------------------------------
-            // ① 準備中 overlay
-            // -------------------------------------------------------
             case .preparing:
                 Color.white.opacity(0.75)
                     .ignoresSafeArea()
                     .overlay(
                         VStack(spacing: 16) {
                             ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle())
                             Text("カメラを準備しています…")
                                 .font(.headline)
                                 .foregroundColor(Theme.dark)
                         }
                     )
 
-            // -------------------------------------------------------
-            // ② 権限リクエスト中（タッチ無効化のみ）
-            // -------------------------------------------------------
             case .requestingPermission:
-                Color.clear
-                    .ignoresSafeArea()
-                    .allowsHitTesting(true) // 全タッチ無効化
+                Color.clear.ignoresSafeArea().allowsHitTesting(true)
 
-            // -------------------------------------------------------
-            // ④ 撮影中 overlay（軽いフェード）
-            // -------------------------------------------------------
             case .capturing:
                 Color.black.opacity(0.25)
                     .ignoresSafeArea()
-                    .overlay(
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle())
-                    )
+                    .overlay(ProgressView())
 
-            // -------------------------------------------------------
-            // ⑤ エラー（alertを外で表示）
-            // -------------------------------------------------------
             case .error(let msg):
                 Color.black.opacity(0.35)
                     .ignoresSafeArea()
@@ -128,17 +65,17 @@ struct PostureAnalysisCameraView: View {
             }
         }
         .onAppear {
-            print("DEBUG: 📷 CameraView appeared")
             cameraVM.requestPermissionIfNeeded()
             cameraVM.configureSessionIfNeeded()
         }
-        .onDisappear {
-            // 撮影直後の遷移時は stopSession をスキップ
-            if cameraVM.freezeDisappear {
-                print("DEBUG: 📷 disappear (freeze中) → stopSession SKIP")
-                return
+        .onChange(of: cameraVM.shots.count) { newCount in
+            if newCount >= 4 {
+                // 4枚揃ったので次へ
+                onCaptured()
             }
-            print("DEBUG: 📷 disappear → stopSession()")
+        }
+        .onDisappear {
+            if cameraVM.freezeDisappear { return }
             cameraVM.stopSession()
         }
         .alert("エラーが発生しました", isPresented: $showErrorAlert) {
@@ -160,36 +97,93 @@ struct PostureAnalysisCameraView: View {
     }
 }
 
-// MARK: - 撮影ロジック
-extension PostureAnalysisCameraView {
+// MARK: - 上部
+private extension PostureAnalysisCameraView {
 
-    private func startCountdown() {
-        cameraVM.startCountdown {
-            takePhoto()
+    var topOverlay: some View {
+        VStack {
+            HStack {
+                Button {
+                    cameraVM.freezeDisappear = false
+                    cameraVM.stopSession()
+                    onClose()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 32))
+                        .foregroundColor(.white.opacity(0.9))
+                        .padding(12)
+                }
+
+                Spacer()
+
+                // ✅ カウント中だけキャンセル表示（要望通り）
+                if cameraVM.isCountingDown {
+                    Button {
+                        cameraVM.cancelSequence()
+                    } label: {
+                        Text("キャンセル")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.95))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .background(Color.black.opacity(0.35), in: Capsule())
+                    }
+                    .padding(12)
+                }
+            }
+
+            Spacer()
+        }
+        .padding(.top, 6)
+    }
+}
+
+// MARK: - 下部UI
+private extension PostureAnalysisCameraView {
+
+    var bottomUI: some View {
+        VStack {
+            Spacer()
+
+            if !cameraVM.isCountingDown {
+
+                VStack(spacing: 14) {
+
+                    Text(instructionText)
+                        .font(Theme.subtitle)
+                        .foregroundColor(.white.opacity(0.92))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 18)
+
+                    GlassButton(
+                        title: "15秒後に撮影",
+                        systemImage: "timer",
+                        background: Theme.sub
+                    ) {
+                        cameraVM.startSequence()   // ✅ 押した瞬間に開始＝離れてOK
+                    }
+                }
+                .padding(.bottom, 60)
+            } else {
+                // カウント中は「今どの向きか」を薄く表示
+                Text("\(cameraVM.currentDirection.title)を撮影します")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.9))
+                    .padding(.bottom, 90)
+            }
         }
     }
 
-    private func takePhoto() {
-        print("DEBUG: ▶︎ CameraView.takePhoto() 呼び出し")
+    var instructionText: String {
+        if cameraVM.permissionDenied {
+            return "カメラアクセスが許可されていません。"
+        }
 
-        // 撮影中に onDisappear が走っても stopSession されないようにフラグを立てる
-        cameraVM.freezeDisappear = true
-
-        cameraVM.capturePhoto {
-            // ここでは freezeDisappear を解除しない
-            // → Confirm 画面に遷移してから Flow 側で解除する
-            DispatchQueue.main.async {
-                if self.cameraVM.capturedImage != nil {
-                    print("DEBUG: 🟢 撮影画像あり → onCaptured 呼び出し")
-                    self.onCaptured()
-                } else {
-                    print("DEBUG: 🔴 撮影画像 nil（CameraView 側）")
-                    self.errorMessage = "撮影画像の取得に失敗しました"
-                    self.showErrorAlert = true
-                    // 失敗時は freeze を解除して再試行できるようにする
-                    self.cameraVM.freezeDisappear = false
-                }
-            }
+        if cameraVM.shots.isEmpty {
+            return "正面を撮影します。ボタンを押すと15秒後に撮影します。押したらスマホから離れて位置を調整してください。"
+        } else {
+            // 2枚目以降は自動進行だが、念のため現在の指示を表示
+            return "\(cameraVM.currentDirection.instruction) 自動で撮影します。"
         }
     }
 }
