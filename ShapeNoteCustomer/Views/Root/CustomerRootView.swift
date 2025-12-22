@@ -3,12 +3,12 @@ import ShapeCore
 
 struct CustomerRootView: View {
 
+    @EnvironmentObject private var appState: CustomerAppState
     @State private var selectedTab = 0
 
     var body: some View {
 
         TabView(selection: $selectedTab) {
-
             CalendarView()
                 .tabItem { Label("記録", systemImage: "chart.line.uptrend.xyaxis") }
                 .tag(0)
@@ -21,7 +21,6 @@ struct CustomerRootView: View {
                 .tabItem { Label("エクササイズ", systemImage: "figure.walk.circle") }
                 .tag(2)
 
-            // ★撮影フローまとめ画面に差し替え
             PostureAnalysisEntryView()
                 .tabItem { Label("姿勢分析", systemImage: "viewfinder.circle") }
                 .tag(3)
@@ -29,6 +28,17 @@ struct CustomerRootView: View {
             MyPageView()
                 .tabItem { Label("マイページ", systemImage: "person.crop.circle") }
                 .tag(4)
+        }
+        .task {
+            await appState.refreshLegalConsentState()
+        }
+        .fullScreenCover(isPresented: $appState.needsLegalConsent) {
+            LegalConsentView(
+                onAgree: {
+                    Task { await appState.acceptLatestLegal() }
+                }
+            )
+            .interactiveDismissDisabled(true)
         }
     }
 }

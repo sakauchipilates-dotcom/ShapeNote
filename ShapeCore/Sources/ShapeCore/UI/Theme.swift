@@ -7,6 +7,36 @@ public struct Theme {
     public static let dark = Color(hex: "#4a4a4a")     // ダークグレー（テキスト）
     public static let accent = Color(hex: "#eaae79")   // サンドオレンジ（アクセント）
 
+    // 追加：警告/注目（赤系が無いので、ブランドに馴染む“赤寄りテラコッタ”を追加）
+    // ※ここは後でお好みの赤に差し替え可
+    public static let warning = Color(hex: "#d26a5c")  // 朱寄りの赤（UIの注意・未確認などに使用）
+
+    // MARK: - Semantic Colors
+    public struct SemanticColor {
+        public let success: Color
+        public let warning: Color
+        public let text: Color
+        public let textSubtle: Color
+        public let card: Color
+
+        public init(
+            success: Color = Theme.sub,
+            warning: Color = Theme.warning,
+            text: Color = Theme.dark,
+            textSubtle: Color = Theme.dark.opacity(0.65),
+            card: Color = Color.white.opacity(0.92)
+        ) {
+            self.success = success
+            self.warning = warning
+            self.text = text
+            self.textSubtle = textSubtle
+            self.card = card
+        }
+    }
+
+    /// computed にして並行性/Sendable 周りの警告を避ける
+    public static var semanticColor: SemanticColor { SemanticColor() }
+
     // MARK: - Gradients
     /// メイン背景（白→ベージュ）
     public static let gradientMain = LinearGradient(

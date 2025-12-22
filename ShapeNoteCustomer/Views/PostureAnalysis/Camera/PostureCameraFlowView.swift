@@ -20,11 +20,13 @@ struct PostureCameraFlowView: View {
             case .camera:
                 PostureAnalysisCameraView(
                     onClose: {
+                        // 終了は安全に全リセット
                         cameraVM.freezeDisappear = false
                         cameraVM.reset()
                         dismiss()
                     },
                     onCaptured: {
+                        // 4枚揃ったら統合解析へ
                         step = .integratedAnalysis
                     }
                 )
@@ -34,11 +36,13 @@ struct PostureCameraFlowView: View {
                 PostureMultiAnalysisView(
                     shots: cameraVM.shots,
                     onRetakeAll: {
+                        // 4枚まとめて撮り直し
                         cameraVM.freezeDisappear = false
                         cameraVM.reset()
                         step = .camera
                     },
                     onClose: {
+                        // 完全に閉じる
                         cameraVM.freezeDisappear = false
                         cameraVM.reset()
                         dismiss()

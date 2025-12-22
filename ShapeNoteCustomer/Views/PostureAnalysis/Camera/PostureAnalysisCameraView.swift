@@ -66,12 +66,26 @@ struct PostureAnalysisCameraView: View {
         }
         .onAppear {
             cameraVM.requestPermissionIfNeeded()
-            cameraVM.configureSessionIfNeeded()
+
+            // 権限未確定中にconfigureすると詰まることがあるので、拒否でない場合のみ
+            if !cameraVM.permissionDenied {
+                cameraVM.configureSessionIfNeeded()
+            }
+        }
+        .onChange(of: cameraVM.permissionDenied) { denied in
+            if !denied {
+                cameraVM.configureSessionIfNeeded()
+            }
         }
         .onChange(of: cameraVM.shots.count) { newCount in
             if newCount >= 4 {
-                // 4枚揃ったので次へ
-                onCaptured()
+                // 4枚揃ったら：遷移前にセッション停止（メモリピーク抑制）
+                cameraVM.freezeDisappear = true
+                cameraVM.stopSession()
+
+                DispatchQueue.main.async {
+                    onCaptured()
+                }
             }
         }
         .onDisappear {
@@ -83,7 +97,9 @@ struct PostureAnalysisCameraView: View {
             Button("再試行") {
                 cameraVM.reset()
                 cameraVM.requestPermissionIfNeeded()
-                cameraVM.configureSessionIfNeeded()
+                if !cameraVM.permissionDenied {
+                    cameraVM.configureSessionIfNeeded()
+                }
             }
 
             Button("閉じる", role: .cancel) {
@@ -116,7 +132,6 @@ private extension PostureAnalysisCameraView {
 
                 Spacer()
 
-                // ✅ カウント中だけキャンセル表示（要望通り）
                 if cameraVM.isCountingDown {
                     Button {
                         cameraVM.cancelSequence()
@@ -160,12 +175,11 @@ private extension PostureAnalysisCameraView {
                         systemImage: "timer",
                         background: Theme.sub
                     ) {
-                        cameraVM.startSequence()   // ✅ 押した瞬間に開始＝離れてOK
+                        cameraVM.startSequence()
                     }
                 }
                 .padding(.bottom, 60)
             } else {
-                // カウント中は「今どの向きか」を薄く表示
                 Text("\(cameraVM.currentDirection.title)を撮影します")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(.white.opacity(0.9))
@@ -182,7 +196,6 @@ private extension PostureAnalysisCameraView {
         if cameraVM.shots.isEmpty {
             return "正面を撮影します。ボタンを押すと15秒後に撮影します。押したらスマホから離れて位置を調整してください。"
         } else {
-            // 2枚目以降は自動進行だが、念のため現在の指示を表示
             return "\(cameraVM.currentDirection.instruction) 自動で撮影します。"
         }
     }

@@ -25,9 +25,6 @@ struct PostureAnalysisFlowView: View {
     var body: some View {
         switch state {
 
-        // ------------------------------------------------------
-        // MARK: - 解析中 UI
-        // ------------------------------------------------------
         case .loading:
             ZStack {
                 Theme.gradientMain
@@ -52,9 +49,6 @@ struct PostureAnalysisFlowView: View {
             .onAppear { startIfNeeded() }
             .onDisappear { pipelineTask?.cancel() }
 
-        // ------------------------------------------------------
-        // MARK: - 成功時 → PostureResultView へ移譲
-        // ------------------------------------------------------
         case .success(let result, let skeleton, let report):
             PostureResultView(
                 capturedImage: capturedImage,
@@ -62,21 +56,16 @@ struct PostureAnalysisFlowView: View {
                 skeletonImage: skeleton,
                 reportImage: report,
                 onRetake: {
-                    // カメラへ戻る（Flow を pop）
                     pipelineTask?.cancel()
                     onPop()
                 },
                 onClose: {
-                    // 完全にホームへ戻る
                     pipelineTask?.cancel()
                     onPopToRoot()
                 }
             )
             .navigationBarBackButtonHidden(true)
 
-        // ------------------------------------------------------
-        // MARK: - エラー UI
-        // ------------------------------------------------------
         case .failure(let message):
             ZStack {
                 Theme.gradientMain
@@ -130,35 +119,28 @@ struct PostureAnalysisFlowView: View {
         }
     }
 
-    // MARK: - 初回一度だけ開始
     private func startIfNeeded() {
         guard !started else { return }
         started = true
         startPipeline()
     }
 
-    // MARK: - AI解析パイプライン
     private func startPipeline() {
         pipelineTask = Task { [capturedImage] in
             do {
                 try Task.checkCancellation()
 
-                // ① AI姿勢解析（結果 + 指標）
                 let (result, _) = try await analyzer.analyze(image: capturedImage)
                 try Task.checkCancellation()
 
-                // ② 骨格描画画像
                 let skeleton = try analyzer.drawSkeleton(on: capturedImage)
                 try Task.checkCancellation()
 
-                // ③ 診断レポート画像
                 let report = analyzer.generateReportImage(from: skeleton, result: result)
                 try Task.checkCancellation()
 
-                // ④ Firestoreへ保存（失敗は握りつぶし）
                 try? await analyzer.saveResult(result)
 
-                // ⑤ UI更新
                 await MainActor.run {
                     state = .success(
                         result: result,

@@ -1,6 +1,7 @@
 import SwiftUI
 import FirebaseAuth
 import FirebaseFirestore
+import ShapeCore
 
 struct CalendarView: View {
     @State private var selectedDate = Date()
@@ -15,7 +16,6 @@ struct CalendarView: View {
     @StateObject private var weightManager = WeightManager()
     private let calendar = Calendar.current
 
-    // MARK: - 月切り替え
     private func changeMonth(by offset: Int) {
         withAnimation(.easeInOut(duration: 0.35)) {
             slideDirection = offset > 0
@@ -28,14 +28,12 @@ struct CalendarView: View {
         }
     }
 
-    // MARK: - 本体
     var body: some View {
         ScrollView {
-            VStack(spacing: 24) {
-                // 月タイトル
+            VStack(spacing: 18) {
                 monthHeader
 
-                // カレンダー
+                // ここを太く：カレンダーを主役に
                 CalendarGridView(
                     calendar: calendar,
                     currentMonthOffset: $currentMonthOffset,
@@ -49,19 +47,19 @@ struct CalendarView: View {
                     }
                 )
 
-                // データ分析
                 WeightAnalysisView(
                     chartMode: $chartMode,
                     selectedMonthDate: $selectedMonthDate,
                     weightManager: weightManager
                 )
 
-                // BMI & 設定
                 bmiAndSettings
             }
-            .padding()
+            .padding(.horizontal, 14)
+            .padding(.top, 10)     // ← 余白を詰めてカレンダー領域を稼ぐ
+            .padding(.bottom, 28)
         }
-        .navigationTitle("カレンダー")
+        .navigationTitle("記録")
         .task {
             await weightManager.loadWeights()
             selectedMonthDate = Date()
@@ -77,7 +75,7 @@ struct CalendarView: View {
                 date: selectedDate,
                 isPresented: $showWeightSheet,
                 existingWeight: currentValue,
-                goalWeight: weightManager.goalWeight,  // ← 追加済み
+                goalWeight: weightManager.goalWeight,
                 onSave: { weight, condition, recordedAt in
                     Task {
                         await weightManager.setWeight(
@@ -105,30 +103,44 @@ struct CalendarView: View {
         }
     }
 
-    // MARK: - 月タイトルビュー
     private var monthHeader: some View {
-        HStack {
+        HStack(spacing: 12) {
             Button(action: { changeMonth(by: -1) }) {
                 Image(systemName: "chevron.left")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(Theme.dark.opacity(0.8))
+                    .frame(width: 36, height: 36)
+                    .background(Color.white.opacity(0.70), in: Circle())
             }
+
             Spacer()
+
             Text(monthTitle)
-                .font(.title2.bold())
+                .font(.headline.weight(.semibold))
+                .foregroundColor(Theme.dark.opacity(0.9))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(Color.white.opacity(0.70), in: Capsule())
+
             Spacer()
+
             Button(action: { changeMonth(by: 1) }) {
                 Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(Theme.dark.opacity(0.8))
+                    .frame(width: 36, height: 36)
+                    .background(Color.white.opacity(0.70), in: Circle())
             }
         }
-        .padding(.horizontal)
+        .padding(.horizontal, 4)
     }
 
-    // MARK: - BMI & 設定（既存デザイン維持）
     private var bmiAndSettings: some View {
         VStack(spacing: 16) {
             if let bmi = weightManager.bmi {
                 Text("最新のBMI：\(String(format: "%.1f", bmi))")
                     .font(.subheadline)
-                    .foregroundColor(.gray)
+                    .foregroundColor(Theme.dark.opacity(0.55))
             }
 
             HStack(spacing: 12) {
@@ -136,46 +148,45 @@ struct CalendarView: View {
                     VStack(spacing: 6) {
                         HStack(spacing: 6) {
                             Text("目標体重")
-                                .font(.callout.bold())
-                                .foregroundColor(.blue)
+                                .font(.callout.weight(.semibold))
+                                .foregroundColor(Theme.sub)
                             Image(systemName: "pencil")
                                 .font(.caption)
-                                .foregroundColor(.blue.opacity(0.7))
+                                .foregroundColor(Theme.sub.opacity(0.75))
                         }
                         Text(weightManager.goalWeight > 0
                              ? String(format: "%.1f kg", weightManager.goalWeight)
                              : "未設定")
                         .font(.title3.bold())
+                        .foregroundColor(Theme.dark.opacity(0.9))
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
-                    .background(Color.blue.opacity(0.12))
-                    .cornerRadius(14)
+                    .background(Theme.sub.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
 
                 Button(action: { showHeightAlert = true }) {
                     VStack(spacing: 6) {
                         HStack(spacing: 6) {
                             Text("身長")
-                                .font(.callout.bold())
-                                .foregroundColor(.green)
+                                .font(.callout.weight(.semibold))
+                                .foregroundColor(Theme.accent)
                             Image(systemName: "pencil")
                                 .font(.caption)
-                                .foregroundColor(.green.opacity(0.7))
+                                .foregroundColor(Theme.accent.opacity(0.75))
                         }
                         Text(weightManager.height > 0
                              ? String(format: "%.2f m", weightManager.height)
                              : "未設定")
                         .font(.title3.bold())
+                        .foregroundColor(Theme.dark.opacity(0.9))
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
-                    .background(Color.green.opacity(0.12))
-                    .cornerRadius(14)
+                    .background(Theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
             }
-            .padding(.horizontal)
-            .padding(.bottom, 40)
+            .padding(.bottom, 24)
         }
     }
 

@@ -1,4 +1,5 @@
 import SwiftUI
+import ShapeCore
 
 struct CalendarGridView: View {
     let calendar: Calendar
@@ -7,52 +8,38 @@ struct CalendarGridView: View {
     @Binding var slideDirection: AnyTransition
     let weightManager: WeightManager
     let onSwipe: (Int) -> Void
-    let onDateTap: (Date) -> Void  // ← 追加！
+    let onDateTap: (Date) -> Void
+
+    // 見た目チューニング（ここを触れば一括で変わる）
+    private let cellHeight: CGFloat = 72           // 少し余裕を増やす（体重＋ドット）
+    private let dayCircleSize: CGFloat = 34        // 日付背景の丸
+    private let gridSpacing: CGFloat = 12
+    private let columnSpacing: CGFloat = 10
+    private let dotSize: CGFloat = 6               // 体調ドット径
 
     var body: some View {
         VStack(spacing: 12) {
+
             // 曜日ヘッダー
             HStack {
-                ForEach(calendar.shortWeekdaySymbols, id: \.self) { day in
+                ForEach(Array(calendar.shortWeekdaySymbols.enumerated()), id: \.offset) { idx, day in
                     Text(day)
-                        .font(.subheadline.bold())
+                        .font(.footnote.weight(.semibold))
                         .frame(maxWidth: .infinity)
-                        .foregroundColor(day == "日" ? .red : (day == "土" ? .blue : .primary))
+                        .foregroundColor(weekdayColor(index: idx))
                 }
             }
+            .padding(.horizontal, 4)
 
             ZStack {
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 7), spacing: 12) {
-                    ForEach(generateDays(), id: \.self) { date in
-                        VStack(spacing: 4) {
-                            Text("\(calendar.component(.day, from: date))")
-                                .font(.body)
-                                .foregroundColor(isSameMonth(date) ? .primary : .gray)
-                                .frame(maxWidth: .infinity)
-                                .padding(8)
-                                .background(dayFill(for: date))
-                                .cornerRadius(8)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .stroke(Color.blue.opacity(calendar.isDateInToday(date) ? 0.6 : 0), lineWidth: 2)
-                                )
-                                .onTapGesture {
-                                    selectedDate = date
-                                    onDateTap(date)  // ← 修正ポイント
-                                }
+                let days = generateDays()
 
-                            if let w = weightManager.weight(on: date) {
-                                Text(String(format: "%.1f", w))
-                                    .font(.caption2)
-                                    .foregroundColor(.gray)
-                                    .frame(height: 12)
-                            } else {
-                                Text(" ")
-                                    .font(.caption2)
-                                    .frame(height: 12)
-                            }
-                        }
-                        .frame(height: 52)
+                LazyVGrid(
+                    columns: Array(repeating: GridItem(.flexible(), spacing: columnSpacing), count: 7),
+                    spacing: gridSpacing
+                ) {
+                    ForEach(Array(days.enumerated()), id: \.offset) { _, date in
+                        dayCell(date)
                     }
                 }
                 .id(currentMonthOffset)
@@ -68,23 +55,129 @@ struct CalendarGridView: View {
                     }
             )
         }
-        .padding(.vertical, 12)
-        .padding(.horizontal, 8)
+        .padding(.vertical, 14)
+        .padding(.horizontal, 12)
         .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color(.systemGray6))
-                .shadow(color: .gray.opacity(0.15), radius: 4, x: 0, y: 2)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Theme.gradientCard)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(Color.black.opacity(0.06), lineWidth: 1)
+                )
+                .shadow(color: Theme.dark.opacity(0.08), radius: 10, y: 6)
         )
         .padding(.horizontal, 8)
     }
 
-    private func generateDays() -> [Date] {
-        let base = calendar.date(byAdding: .month, value: currentMonthOffset, to: Date())!
-        guard let range = calendar.range(of: .day, in: .month, for: base),
-              let firstDay = calendar.date(from: calendar.dateComponents([.year, .month], from: base)) else {
-            return []
+    // MARK: - Day Cell
+    @ViewBuilder
+    private func dayCell(_ date: Date) -> some View {
+        if date == Date.distantPast {
+            Color.clear
+                .frame(height: cellHeight)
+        } else {
+            let isToday = calendar.isDateInToday(date)
+            let isSelected = calendar.isDate(date, inSameDayAs: selectedDate)
+            let hasWeight = (weightManager.weight(on: date) != nil)
+            let dayNumber = calendar.component(.day, from: date)
+
+            VStack(spacing: 6) {
+
+                // 日付（丸背景 + 状態）
+                Text("\(dayNumber)")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(dayTextColor(date: date, isSelected: isSelected))
+                    .frame(width: dayCircleSize, height: dayCircleSize)
+                    .background(dayBackground(date: date, isSelected: isSelected, hasWeight: hasWeight))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(isToday ? Theme.sub.opacity(0.9) : .clear, lineWidth: 2)
+                    )
+                    .onTapGesture {
+                        selectedDate = date
+                        onDateTap(date)
+                    }
+
+                // 体重（Capsuleバッジ）
+                if let w = weightManager.weight(on: date) {
+                    weightBadge(text: String(format: "%.1f", w))
+                } else {
+                    Color.clear.frame(height: 18)
+                }
+
+                // 体調ドット（healthがある日のみ表示）
+                healthDot(date: date)
+            }
+            .frame(height: cellHeight)
         }
+    }
+
+    private func weightBadge(text: String) -> some View {
+        Text(text)
+            .font(.caption2.weight(.semibold))
+            .monospacedDigit()
+            .foregroundColor(Theme.dark.opacity(0.80))
+            .lineLimit(1)
+            .minimumScaleFactor(0.85)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color.white.opacity(0.65), in: Capsule())
+            .overlay(
+                Capsule().stroke(Color.black.opacity(0.06), lineWidth: 1)
+            )
+            .frame(height: 18)
+    }
+
+    // ✅ 体調ドット（good/normal/bad -> WeightManager.healthColor）
+    @ViewBuilder
+    private func healthDot(date: Date) -> some View {
+        if let c = weightManager.healthColor(on: date) {
+            Circle()
+                .fill(c.opacity(0.95))
+                .frame(width: dotSize, height: dotSize)
+                .overlay(
+                    Circle().stroke(Color.black.opacity(0.08), lineWidth: 1)
+                )
+                .padding(.top, 1)
+                .accessibilityLabel("体調あり")
+        } else {
+            // ドット行の高さを固定して、セル内のブレをなくす
+            Color.clear
+                .frame(width: dotSize, height: dotSize)
+                .padding(.top, 1)
+        }
+    }
+
+    private func dayBackground(date: Date, isSelected: Bool, hasWeight: Bool) -> some View {
+        if isSelected {
+            return Theme.sub.opacity(0.25)
+        }
+        if hasWeight {
+            return Theme.accent.opacity(0.18)
+        }
+        // 同月以外は薄く
+        if !isSameMonth(date) {
+            return Color.white.opacity(0.35)
+        }
+        return Color.white.opacity(0.55)
+    }
+
+    private func dayTextColor(date: Date, isSelected: Bool) -> Color {
+        if isSelected { return Theme.dark.opacity(0.90) }
+        if !isSameMonth(date) { return Theme.dark.opacity(0.35) }
+        return Theme.dark.opacity(0.85)
+    }
+
+    // MARK: - Month days
+    private func generateDays() -> [Date] {
+        let base = calendar.date(byAdding: .month, value: currentMonthOffset, to: Date()) ?? Date()
+
+        guard let range = calendar.range(of: .day, in: .month, for: base),
+              let firstDay = calendar.date(from: calendar.dateComponents([.year, .month], from: base))
+        else { return [] }
+
         let firstWeekday = calendar.component(.weekday, from: firstDay)
+
         var days: [Date] = Array(repeating: Date.distantPast, count: max(firstWeekday - 1, 0))
         for day in range {
             if let d = calendar.date(byAdding: .day, value: day - 1, to: firstDay) {
@@ -95,17 +188,14 @@ struct CalendarGridView: View {
     }
 
     private func isSameMonth(_ date: Date) -> Bool {
-        let current = calendar.date(byAdding: .month, value: currentMonthOffset, to: Date())!
+        let current = calendar.date(byAdding: .month, value: currentMonthOffset, to: Date()) ?? Date()
         return calendar.isDate(date, equalTo: current, toGranularity: .month)
     }
 
-    private func dayFill(for date: Date) -> Color {
-        if calendar.isDateInToday(date) {
-            return Color.blue.opacity(0.15)
-        } else if weightManager.weight(on: date) != nil {
-            return Color.blue.opacity(0.08)
-        } else {
-            return Color.gray.opacity(0.05)
-        }
+    private func weekdayColor(index: Int) -> Color {
+        // Sunday: warning（赤系） / Saturday: sub（ブランドグリーン）
+        if index == 0 { return Theme.warning.opacity(0.95) }
+        if index == 6 { return Theme.sub.opacity(0.95) }
+        return Theme.dark.opacity(0.70)
     }
 }

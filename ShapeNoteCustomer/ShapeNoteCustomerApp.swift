@@ -15,6 +15,14 @@ struct ShapeNoteCustomerApp: App {
             Group {
                 if appState.isLoggedIn {
                     CustomerRootView()
+                        .fullScreenCover(isPresented: $appState.needsLegalConsent) {
+                            LegalConsentView(
+                                onAgree: {
+                                    Task { await appState.acceptLatestLegal() }
+                                }
+                            )
+                            .interactiveDismissDisabled(true)
+                        }
                 } else {
                     CustomerLoginView()
                 }

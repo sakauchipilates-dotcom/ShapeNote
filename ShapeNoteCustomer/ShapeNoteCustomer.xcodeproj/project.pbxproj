@@ -41,6 +41,16 @@
 		6D8763A92EC896F600BD89CA /* PostureCameraFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D8763A82EC896F600BD89CA /* PostureCameraFlowView.swift */; };
 		6D8763AB2EC8D40100BD89CA /* PostureAnalysisEntryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D8763AA2EC8D40100BD89CA /* PostureAnalysisEntryView.swift */; };
 		6D8763AE2EC8E73300BD89CA /* PostureCaptureGuideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D8763AD2EC8E73300BD89CA /* PostureCaptureGuideView.swift */; };
+		6D8D8E252EF8F11A00AC15D6 /* ShareSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D8D8E242EF8F11A00AC15D6 /* ShareSheet.swift */; };
+		6D8D8E272EF8F14700AC15D6 /* PostureReportRenderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D8D8E262EF8F14700AC15D6 /* PostureReportRenderView.swift */; };
+		6D8D8E2A2EF8F76700AC15D6 /* PhotoSaver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D8D8E292EF8F76700AC15D6 /* PhotoSaver.swift */; };
+		6D8D8E2C2EF8FC1A00AC15D6 /* FeatureFlags.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D8D8E2B2EF8FC1A00AC15D6 /* FeatureFlags.swift */; };
+		6D8D8E2E2EF8FC3000AC15D6 /* ComingSoonOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D8D8E2D2EF8FC3000AC15D6 /* ComingSoonOverlay.swift */; };
+		6D8D8E302EF979F100AC15D6 /* LegalVersions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D8D8E2F2EF979F100AC15D6 /* LegalVersions.swift */; };
+		6D8D8E322EF97A1200AC15D6 /* LegalAgreementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D8D8E312EF97A1200AC15D6 /* LegalAgreementView.swift */; };
+		6D8D8E342EF97C3600AC15D6 /* LegalDocuments.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D8D8E332EF97C3600AC15D6 /* LegalDocuments.swift */; };
+		6D8D8E362EF97C4700AC15D6 /* LegalConsentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D8D8E352EF97C4700AC15D6 /* LegalConsentView.swift */; };
+		6D8D8E382EF9A97F00AC15D6 /* HealthEnums.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D8D8E372EF9A97F00AC15D6 /* HealthEnums.swift */; };
 		6D930BE52EF80C6F00051AFC /* PostureMultiResultHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D930BE42EF80C6F00051AFC /* PostureMultiResultHubView.swift */; };
 		6D930BE72EF80EF500051AFC /* VoiceGuide.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D930BE62EF80EF500051AFC /* VoiceGuide.swift */; };
 		6D930BE92EF8119C00051AFC /* PostureShotDirection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D930BE82EF8119C00051AFC /* PostureShotDirection.swift */; };
@@ -110,6 +120,16 @@
 		6D8763A82EC896F600BD89CA /* PostureCameraFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostureCameraFlowView.swift; sourceTree = "<group>"; };
 		6D8763AA2EC8D40100BD89CA /* PostureAnalysisEntryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostureAnalysisEntryView.swift; sourceTree = "<group>"; };
 		6D8763AD2EC8E73300BD89CA /* PostureCaptureGuideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostureCaptureGuideView.swift; sourceTree = "<group>"; };
+		6D8D8E242EF8F11A00AC15D6 /* ShareSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareSheet.swift; sourceTree = "<group>"; };
+		6D8D8E262EF8F14700AC15D6 /* PostureReportRenderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostureReportRenderView.swift; sourceTree = "<group>"; };
+		6D8D8E292EF8F76700AC15D6 /* PhotoSaver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoSaver.swift; sourceTree = "<group>"; };
+		6D8D8E2B2EF8FC1A00AC15D6 /* FeatureFlags.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeatureFlags.swift; sourceTree = "<group>"; };
+		6D8D8E2D2EF8FC3000AC15D6 /* ComingSoonOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComingSoonOverlay.swift; sourceTree = "<group>"; };
+		6D8D8E2F2EF979F100AC15D6 /* LegalVersions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegalVersions.swift; sourceTree = "<group>"; };
+		6D8D8E312EF97A1200AC15D6 /* LegalAgreementView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegalAgreementView.swift; sourceTree = "<group>"; };
+		6D8D8E332EF97C3600AC15D6 /* LegalDocuments.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegalDocuments.swift; sourceTree = "<group>"; };
+		6D8D8E352EF97C4700AC15D6 /* LegalConsentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegalConsentView.swift; sourceTree = "<group>"; };
+		6D8D8E372EF9A97F00AC15D6 /* HealthEnums.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthEnums.swift; sourceTree = "<group>"; };
 		6D930BE42EF80C6F00051AFC /* PostureMultiResultHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostureMultiResultHubView.swift; sourceTree = "<group>"; };
 		6D930BE62EF80EF500051AFC /* VoiceGuide.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceGuide.swift; sourceTree = "<group>"; };
 		6D930BE82EF8119C00051AFC /* PostureShotDirection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostureShotDirection.swift; sourceTree = "<group>"; };
@@ -168,6 +188,7 @@
 		6D4DE4582EAA5DC5003B9894 = {
 			isa = PBXGroup;
 			children = (
+				6D8D8E282EF8F74500AC15D6 /* Utilities */,
 				6DF01B3E2EB446E700B0CC1B /* Views */,
 				6DF01B3F2EB4470A00B0CC1B /* Models */,
 				6DA8DABB2EBB439E00DACEED /* ShapeNoteCustomerApp.swift */,
@@ -236,6 +257,19 @@
 			path = Guide;
 			sourceTree = "<group>";
 		};
+		6D8D8E282EF8F74500AC15D6 /* Utilities */ = {
+			isa = PBXGroup;
+			children = (
+				6D8D8E292EF8F76700AC15D6 /* PhotoSaver.swift */,
+				6D8D8E2B2EF8FC1A00AC15D6 /* FeatureFlags.swift */,
+				6D8D8E2F2EF979F100AC15D6 /* LegalVersions.swift */,
+				6D8D8E332EF97C3600AC15D6 /* LegalDocuments.swift */,
+				6D8D8E352EF97C4700AC15D6 /* LegalConsentView.swift */,
+				6D8D8E372EF9A97F00AC15D6 /* HealthEnums.swift */,
+			);
+			path = Utilities;
+			sourceTree = "<group>";
+		};
 		6D930BEE2EF8258400051AFC /* Multi */ = {
 			isa = PBXGroup;
 			children = (
@@ -243,6 +277,7 @@
 				6D930BEC2EF824F300051AFC /* PostureMultiAnalysisView.swift */,
 				6D930BE42EF80C6F00051AFC /* PostureMultiResultHubView.swift */,
 				6D930BE82EF8119C00051AFC /* PostureShotDirection.swift */,
+				6D8D8E262EF8F14700AC15D6 /* PostureReportRenderView.swift */,
 			);
 			path = Multi;
 			sourceTree = "<group>";
@@ -330,6 +365,9 @@
 				6D8763922EC77B7200BD89CA /* CameraGuideOverlay.swift */,
 				6D8763942EC77FE800BD89CA /* ProgressRing.swift */,
 				6D8763962EC7820200BD89CA /* ReportGenerator.swift */,
+				6D8D8E242EF8F11A00AC15D6 /* ShareSheet.swift */,
+				6D8D8E2D2EF8FC3000AC15D6 /* ComingSoonOverlay.swift */,
+				6D8D8E312EF97A1200AC15D6 /* LegalAgreementView.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -464,11 +502,13 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				6D8D8E2A2EF8F76700AC15D6 /* PhotoSaver.swift in Sources */,
 				6DF01B412EB4488500B0CC1B /* ContactItem.swift in Sources */,
 				6D930BE72EF80EF500051AFC /* VoiceGuide.swift in Sources */,
 				6DF01B262EB4436D00B0CC1B /* CalendarView.swift in Sources */,
 				6D87638D2EC77B4500BD89CA /* GlassButton.swift in Sources */,
 				6DF01B272EB4436D00B0CC1B /* ChatListView.swift in Sources */,
+				6D8D8E2C2EF8FC1A00AC15D6 /* FeatureFlags.swift in Sources */,
 				6D930BED2EF824F300051AFC /* PostureMultiAnalysisView.swift in Sources */,
 				6D930BEB2EF824D500051AFC /* PostureMultiAnalysisVM.swift in Sources */,
 				6D8763AB2EC8D40100BD89CA /* PostureAnalysisEntryView.swift in Sources */,
@@ -497,7 +537,9 @@
 				6D8763992EC7837200BD89CA /* ReportData.swift in Sources */,
 				6DF01B2F2EB4436D00B0CC1B /* MembershipCardView.swift in Sources */,
 				6D7D65FD2EC1C244003D1943 /* VisitHistoryView.swift in Sources */,
+				6D8D8E272EF8F14700AC15D6 /* PostureReportRenderView.swift in Sources */,
 				6DF01B452EB44F0C00B0CC1B /* CustomerContactUnreadVM.swift in Sources */,
+				6D8D8E252EF8F11A00AC15D6 /* ShareSheet.swift in Sources */,
 				6DF01B302EB4436D00B0CC1B /* MyPageView.swift in Sources */,
 				6DA8DABE2EBB439E00DACEED /* CustomerAppState.swift in Sources */,
 				6D930BE52EF80C6F00051AFC /* PostureMultiResultHubView.swift in Sources */,
@@ -505,9 +547,12 @@
 				6DA8DAC72EBB45AA00DACEED /* CouponListView.swift in Sources */,
 				6DA8DABF2EBB439E00DACEED /* ShapeNoteCustomerApp.swift in Sources */,
 				6D7D65FF2EC1E7E0003D1943 /* VisitHistoryItem.swift in Sources */,
+				6D8D8E362EF97C4700AC15D6 /* LegalConsentView.swift in Sources */,
 				6DF01B702EB5936200B0CC1B /* WeightAnalysisView.swift in Sources */,
 				6D8763A52EC88C5C00BD89CA /* PhotoCaptureHandler.swift in Sources */,
 				6D4AA9082EC5C4A8004EEBBA /* CameraPreview.swift in Sources */,
+				6D8D8E322EF97A1200AC15D6 /* LegalAgreementView.swift in Sources */,
+				6D8D8E382EF9A97F00AC15D6 /* HealthEnums.swift in Sources */,
 				6D7D65FB2EC1B7C3003D1943 /* ExerciseExplainDetailView.swift in Sources */,
 				6D7D65F92EC1B7B0003D1943 /* ExerciseExplainListView.swift in Sources */,
 				6D37D1892EB6384B003CE780 /* ChatRoomVM.swift in Sources */,
@@ -515,6 +560,7 @@
 				6D8763932EC77B7200BD89CA /* CameraGuideOverlay.swift in Sources */,
 				6D8763A32EC885A400BD89CA /* PostureFlowVM.swift in Sources */,
 				6D4AA9062EC5C284004EEBBA /* PostureAnalysisFlowView.swift in Sources */,
+				6D8D8E342EF97C3600AC15D6 /* LegalDocuments.swift in Sources */,
 				6DF01B432EB449A100B0CC1B /* ContactHistoryView.swift in Sources */,
 				6D87639B2EC8753300BD89CA /* PostureCaptureConfirmView.swift in Sources */,
 				6DCAB4B02EB98A4500E7B0D8 /* ExerciseItemViewData.swift in Sources */,
@@ -524,8 +570,10 @@
 				6D7D66072EC33140003D1943 /* PostureAnalysisCameraView.swift in Sources */,
 				6DCAB49A2EB8FEA200E7B0D8 /* ExerciseViewModel.swift in Sources */,
 				6D37D1CA2EB74A5A003CE780 /* ProfileImageVM.swift in Sources */,
+				6D8D8E302EF979F100AC15D6 /* LegalVersions.swift in Sources */,
 				6D4AA9042EC5C26A004EEBBA /* PhotoCaptureDelegate.swift in Sources */,
 				6D8763A92EC896F600BD89CA /* PostureCameraFlowView.swift in Sources */,
+				6D8D8E2E2EF8FC3000AC15D6 /* ComingSoonOverlay.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -1,24 +1,83 @@
 import SwiftUI
-import FirebaseFirestore
-import FirebaseAuth
+import ShapeCore
 
 struct WeightInputSheet: View {
     var date: Date
     @Binding var isPresented: Bool
     var existingWeight: Double? = nil
     var goalWeight: Double? = nil
-    var onSave: (Double, String, Date) -> Void    // ← 測定条件と時間も渡す
+    var onSave: (Double, String, Date) -> Void
     var onDelete: (() -> Void)? = nil
 
     @State private var inputWeight: Double = 0.0
-    @State private var selectedCondition: String = "起床後"
+    @State private var selectedMeasure: MeasureCondition = .wake
+    @State private var selectedHealth: HealthCondition = .normal
     @State private var recordTime: Date = Date()
+
     @FocusState private var isKeyboardActive: Bool
 
-    private let conditions = [
-        "起床後", "朝食後", "昼食後", "日中", "夕食後", "入浴前", "入浴後", "就寝前"
-    ]
+    // MARK: - Enums
+    enum MeasureCondition: String, CaseIterable, Identifiable {
+        case wake = "起床後"
+        case afterBreakfast = "朝食後"
+        case afterLunch = "昼食後"
+        case daytime = "日中"
+        case afterDinner = "夕食後"
+        case beforeBath = "入浴前"
+        case afterBath = "入浴後"
+        case beforeBed = "就寝前"
 
+        var id: String { rawValue }
+
+        var icon: String {
+            switch self {
+            case .wake: return "sunrise"
+            case .afterBreakfast: return "sun.max"
+            case .afterLunch: return "sun.max.fill"
+            case .daytime: return "clock"
+            case .afterDinner: return "fork.knife"
+            case .beforeBath: return "drop"
+            case .afterBath: return "drop.fill"
+            case .beforeBed: return "moon.stars"
+            }
+        }
+    }
+
+    enum HealthCondition: String, CaseIterable, Identifiable {
+        case good, normal, bad
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .good: return "良い"
+            case .normal: return "普通"
+            case .bad: return "悪い"
+            }
+        }
+
+        var icon: String {
+            switch self {
+            case .good: return "face.smiling"
+            case .normal: return "face.neutral"
+            case .bad: return "face.dashed"
+            }
+        }
+
+        /// カレンダーのドットにも使える色（Theme に warning がある想定）
+        var tint: Color {
+            switch self {
+            case .good:
+                return Theme.sub
+            case .normal:
+                return Theme.accent
+            case .bad:
+                return Theme.semanticColor.warning
+            }
+        }
+    }
+
+    // MARK: - Date label
     private var dateString: String {
         let f = DateFormatter()
         f.locale = Locale(identifier: "ja_JP")
@@ -28,84 +87,106 @@ struct WeightInputSheet: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 20) {
-                Text("体重を記録")
+            VStack(spacing: 18) {
+
+                Text(existingWeight == nil ? "体重を記録" : "体重を更新")
                     .font(.title2.bold())
-                    .padding(.top, 16)
+                    .padding(.top, 14)
 
                 Label(dateString, systemImage: "calendar")
                     .font(.headline)
-                    .foregroundColor(.gray.opacity(0.8))
+                    .foregroundColor(Theme.dark.opacity(0.65))
 
-                // 🎰 スロット方式
+                // 🎰 スロット方式（維持）
                 SlotPicker(inputWeight: $inputWeight)
-                    .padding(.top, 4)
+                    .padding(.top, 2)
 
-                // ⌨️ キーボード入力
+                // ⌨️ 直接入力（維持）
                 VStack(spacing: 6) {
                     Text("タップして直接入力")
                         .font(.caption)
-                        .foregroundColor(.gray.opacity(0.7))
+                        .foregroundColor(Theme.dark.opacity(0.55))
 
-                    HStack(spacing: 6) {
+                    HStack(spacing: 8) {
                         TextField("", value: $inputWeight, format: .number)
                             .keyboardType(.decimalPad)
                             .textFieldStyle(.roundedBorder)
                             .font(.system(size: 34, weight: .semibold))
                             .multilineTextAlignment(.center)
-                            .frame(width: 130)
+                            .frame(width: 140)
                             .focused($isKeyboardActive)
 
                         Text("kg")
                             .font(.title3.bold())
-                            .foregroundColor(.gray.opacity(0.7))
+                            .foregroundColor(Theme.dark.opacity(0.55))
                     }
                 }
 
-                Divider().padding(.vertical, 6)
+                Divider().opacity(0.25)
 
-                // 🕒 測定条件選択
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("測定条件")
-                        .font(.subheadline.bold())
-                        .foregroundColor(.gray)
+                // ✅ 測定時間：横並びタップ選択
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("測定時間")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(Theme.dark.opacity(0.70))
 
-                    Picker("測定条件", selection: $selectedCondition) {
-                        ForEach(conditions, id: \.self) { condition in
-                            Text(condition).tag(condition)
-                        }
+                    pillRow(items: MeasureCondition.allCases, selection: $selectedMeasure) { item, isSelected in
+                        pill(
+                            title: item.rawValue,
+                            systemImage: item.icon,
+                            isSelected: isSelected,
+                            selectedTint: Theme.sub
+                        )
                     }
-                    .pickerStyle(.wheel)
-                    .frame(height: 100)
+                }
+                .padding(.horizontal)
+
+                // ✅ 体調：横並びタップ選択
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("体調")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(Theme.dark.opacity(0.70))
+
+                    pillRow(items: HealthCondition.allCases, selection: $selectedHealth) { item, isSelected in
+                        pill(
+                            title: item.title,
+                            systemImage: item.icon,
+                            isSelected: isSelected,
+                            selectedTint: item.tint
+                        )
+                    }
                 }
                 .padding(.horizontal)
 
                 // ⏰ 記録時間（自動）
                 HStack {
                     Label("記録時刻", systemImage: "clock")
-                        .foregroundColor(.gray.opacity(0.8))
+                        .foregroundColor(Theme.dark.opacity(0.65))
                     Spacer()
                     Text(recordTime.formatted(date: .omitted, time: .shortened))
-                        .font(.subheadline.bold())
-                        .foregroundColor(.primary)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(Theme.dark.opacity(0.85))
                 }
                 .padding(.horizontal)
 
                 Spacer()
 
-                // ✅ 保存ボタン
+                // ✅ 保存/更新
                 Button(existingWeight == nil ? "保存する" : "更新する") {
-                    onSave(inputWeight, selectedCondition, recordTime)
+                    // onSave のシグネチャは変えないため、ここで pack して渡す
+                    // 例: "起床後||good"
+                    let packed = "\(selectedMeasure.rawValue)||\(selectedHealth.rawValue)"
+                    onSave(inputWeight, packed, recordTime)
                     isPresented = false
                 }
                 .frame(maxWidth: .infinity)
                 .padding()
-                .background(Color.blue.opacity(0.85))
+                .background(Theme.sub.opacity(0.92))
                 .foregroundColor(.white)
-                .cornerRadius(10)
+                .cornerRadius(12)
                 .padding(.horizontal)
 
-                // ❌ 削除ボタン
+                // ❌ 削除
                 if existingWeight != nil {
                     Button("削除する", role: .destructive) {
                         onDelete?()
@@ -113,9 +194,9 @@ struct WeightInputSheet: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding()
-                    .background(Color.red.opacity(0.85))
+                    .background(Theme.semanticColor.warning)
                     .foregroundColor(.white)
-                    .cornerRadius(10)
+                    .cornerRadius(12)
                     .padding(.horizontal)
                 }
             }
@@ -134,10 +215,8 @@ struct WeightInputSheet: View {
                 ToolbarItem(placement: .keyboard) {
                     HStack {
                         Spacer()
-                        Button("閉じる") {
-                            isKeyboardActive = false
-                        }
-                        .font(.body.bold())
+                        Button("閉じる") { isKeyboardActive = false }
+                            .font(.body.bold())
                     }
                 }
 
@@ -149,9 +228,53 @@ struct WeightInputSheet: View {
             }
         }
     }
+
+    // MARK: - Pills UI
+    private func pillRow<Item: Identifiable & Hashable>(
+        items: [Item],
+        selection: Binding<Item>,
+        content: @escaping (Item, Bool) -> AnyView
+    ) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                ForEach(items, id: \.id) { item in
+                    let isSelected = (item == selection.wrappedValue)
+                    Button {
+                        selection.wrappedValue = item
+                    } label: {
+                        content(item, isSelected)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.vertical, 2)
+        }
+    }
+
+    private func pill(title: String, systemImage: String, isSelected: Bool, selectedTint: Color) -> AnyView {
+        AnyView(
+            HStack(spacing: 8) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 14, weight: .semibold))
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+            }
+            .foregroundColor(isSelected ? selectedTint : Theme.dark.opacity(0.65))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(isSelected ? selectedTint.opacity(0.16) : Color.white.opacity(0.70))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(isSelected ? selectedTint.opacity(0.35) : Color.black.opacity(0.06), lineWidth: 1)
+            )
+        )
+    }
 }
 
-// MARK: - スロット入力（小数点バグ修正版）
+// MARK: - スロット入力（小数点バグ修正版：維持）
 private struct SlotPicker: View {
     @Binding var inputWeight: Double
     private let minWeight = 30.0
