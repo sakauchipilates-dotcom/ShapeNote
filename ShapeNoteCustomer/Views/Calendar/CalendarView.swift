@@ -1,200 +1,402 @@
 import SwiftUI
-import FirebaseAuth
-import FirebaseFirestore
+import Charts
 import ShapeCore
 
+// グラフ表示モード
+private enum ChartMode {
+    case monthly
+    case yearly
+}
+
 struct CalendarView: View {
-    @State private var selectedDate = Date()
-    @State private var currentMonthOffset = 0
-    @State private var selectedMonthDate = Date()
-    @State private var showWeightSheet = false
-    @State private var showGoalAlert = false
-    @State private var showHeightAlert = false
-    @State private var slideDirection: AnyTransition = .identity
-    @State private var chartMode: WeightChartView.ChartMode = .month
+
+    // MARK: - Properties
+
+    private let calendar = Calendar(identifier: .gregorian)
 
     @StateObject private var weightManager = WeightManager()
-    private let calendar = Calendar.current
 
-    private func changeMonth(by offset: Int) {
-        withAnimation(.easeInOut(duration: 0.35)) {
-            slideDirection = offset > 0
-                ? .asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading))
-                : .asymmetric(insertion: .move(edge: .leading), removal: .move(edge: .trailing))
-            currentMonthOffset += offset
-        }
-        if let newDate = calendar.date(byAdding: .month, value: currentMonthOffset, to: Date()) {
-            selectedMonthDate = newDate
-        }
-    }
+    @State private var currentMonthOffset: Int = 0
+    @State private var selectedDate: Date = Date()
+    @State private var slideDirection: AnyTransition = .identity
+
+    @State private var showWeightSheet: Bool = false
+    @State private var chartMode: ChartMode = .monthly
+
+    @State private var showGoalAlert: Bool = false
+    @State private var goalInputText: String = ""
+
+    // MARK: - Body
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 18) {
+            VStack(spacing: 16) {
+
                 monthHeader
 
-                // ここを太く：カレンダーを主役に
                 CalendarGridView(
                     calendar: calendar,
                     currentMonthOffset: $currentMonthOffset,
                     selectedDate: $selectedDate,
                     slideDirection: $slideDirection,
                     weightManager: weightManager,
-                    onSwipe: changeMonth,
+                    onSwipe: { delta in
+                        changeMonth(by: delta)
+                    },
                     onDateTap: { date in
                         selectedDate = date
                         showWeightSheet = true
                     }
                 )
 
-                WeightAnalysisView(
-                    chartMode: $chartMode,
-                    selectedMonthDate: $selectedMonthDate,
-                    weightManager: weightManager
-                )
-
-                bmiAndSettings
+                analyticsSection
             }
-            .padding(.horizontal, 14)
-            .padding(.top, 10)     // ← 余白を詰めてカレンダー領域を稼ぐ
-            .padding(.bottom, 28)
+            .padding(.vertical, 12)
         }
-        .navigationTitle("記録")
+        .background(Color(.systemGroupedBackground))
         .task {
             await weightManager.loadWeights()
-            selectedMonthDate = Date()
-        }
-        .onChange(of: currentMonthOffset) { _, newValue in
-            if let newDate = calendar.date(byAdding: .month, value: newValue, to: Date()) {
-                selectedMonthDate = newDate
-            }
         }
         .sheet(isPresented: $showWeightSheet) {
-            let currentValue = weightManager.weight(on: selectedDate)
-            WeightInputSheet(
-                date: selectedDate,
-                isPresented: $showWeightSheet,
-                existingWeight: currentValue,
-                goalWeight: weightManager.goalWeight,
-                onSave: { weight, condition, recordedAt in
-                    Task {
-                        await weightManager.setWeight(
-                            for: selectedDate,
-                            weight: weight,
-                            condition: condition,
-                            recordedAt: recordedAt
-                        )
-                    }
-                },
-                onDelete: {
-                    Task { await weightManager.deleteWeight(for: selectedDate) }
-                }
-            )
+            weightInputSheet
         }
         .alert("目標体重を入力", isPresented: $showGoalAlert) {
-            TextField("例: 53.5", value: $weightManager.goalWeight, format: .number)
-            Button("保存") { Task { await weightManager.setGoal(weightManager.goalWeight) } }
-            Button("キャンセル", role: .cancel) {}
+            alertGoalInputContent
+        } message: {
+            Text("kg 単位で入力してください。")
         }
-        .alert("身長を入力（m単位）", isPresented: $showHeightAlert) {
-            TextField("例: 1.65", value: $weightManager.height, format: .number)
-            Button("保存") { Task { await weightManager.setHeight(weightManager.height) } }
-            Button("キャンセル", role: .cancel) {}
-        }
+    }
+
+    // MARK: - Month Header
+
+    private var displayedMonthDate: Date {
+        calendar.date(byAdding: .month, value: currentMonthOffset, to: Date()) ?? Date()
     }
 
     private var monthHeader: some View {
-        HStack(spacing: 12) {
-            Button(action: { changeMonth(by: -1) }) {
+        HStack {
+            Button {
+                changeMonth(by: -1)
+            } label: {
                 Image(systemName: "chevron.left")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(Theme.dark.opacity(0.8))
-                    .frame(width: 36, height: 36)
-                    .background(Color.white.opacity(0.70), in: Circle())
+                    .font(.system(size: 18, weight: .semibold))
+                    .padding(8)
             }
 
             Spacer()
 
-            Text(monthTitle)
-                .font(.headline.weight(.semibold))
-                .foregroundColor(Theme.dark.opacity(0.9))
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(Color.white.opacity(0.70), in: Capsule())
+            Text(displayedMonthDate, format: Date.FormatStyle()
+                .year()
+                .month(.wide))
+            .font(.title3.bold())
 
             Spacer()
 
-            Button(action: { changeMonth(by: 1) }) {
+            Button {
+                changeMonth(by: 1)
+            } label: {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(Theme.dark.opacity(0.8))
-                    .frame(width: 36, height: 36)
-                    .background(Color.white.opacity(0.70), in: Circle())
+                    .font(.system(size: 18, weight: .semibold))
+                    .padding(8)
             }
         }
-        .padding(.horizontal, 4)
+        .padding(.horizontal, 20)
+        .padding(.top, 4)
     }
 
-    private var bmiAndSettings: some View {
-        VStack(spacing: 16) {
-            if let bmi = weightManager.bmi {
-                Text("最新のBMI：\(String(format: "%.1f", bmi))")
-                    .font(.subheadline)
-                    .foregroundColor(Theme.dark.opacity(0.55))
-            }
-
-            HStack(spacing: 12) {
-                Button(action: { showGoalAlert = true }) {
-                    VStack(spacing: 6) {
-                        HStack(spacing: 6) {
-                            Text("目標体重")
-                                .font(.callout.weight(.semibold))
-                                .foregroundColor(Theme.sub)
-                            Image(systemName: "pencil")
-                                .font(.caption)
-                                .foregroundColor(Theme.sub.opacity(0.75))
-                        }
-                        Text(weightManager.goalWeight > 0
-                             ? String(format: "%.1f kg", weightManager.goalWeight)
-                             : "未設定")
-                        .font(.title3.bold())
-                        .foregroundColor(Theme.dark.opacity(0.9))
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(Theme.sub.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                }
-
-                Button(action: { showHeightAlert = true }) {
-                    VStack(spacing: 6) {
-                        HStack(spacing: 6) {
-                            Text("身長")
-                                .font(.callout.weight(.semibold))
-                                .foregroundColor(Theme.accent)
-                            Image(systemName: "pencil")
-                                .font(.caption)
-                                .foregroundColor(Theme.accent.opacity(0.75))
-                        }
-                        Text(weightManager.height > 0
-                             ? String(format: "%.2f m", weightManager.height)
-                             : "未設定")
-                        .font(.title3.bold())
-                        .foregroundColor(Theme.dark.opacity(0.9))
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(Theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                }
-            }
-            .padding(.bottom, 24)
+    private func changeMonth(by delta: Int) {
+        withAnimation(.easeInOut(duration: 0.33)) {
+            currentMonthOffset += delta
+            slideDirection = delta > 0
+            ? .asymmetric(insertion: .move(edge: .trailing),
+                          removal: .move(edge: .leading))
+            : .asymmetric(insertion: .move(edge: .leading),
+                          removal: .move(edge: .trailing))
         }
+    }
+
+    // MARK: - WeightInputSheet ラッパー
+
+    private var weightInputSheet: some View {
+        let currentWeight = weightManager.weight(on: selectedDate)
+        let currentCondition = weightManager.condition(on: selectedDate)
+        let currentHealth = weightManager.health(on: selectedDate)
+        let currentIsMenstruation = weightManager.isMenstruation(on: selectedDate)
+
+        return WeightInputSheet(
+            date: selectedDate,
+            isPresented: $showWeightSheet,
+            existingWeight: currentWeight,
+            goalWeight: weightManager.goalWeight,
+            existingCondition: currentCondition,
+            existingHealth: currentHealth,
+            existingIsMenstruation: currentIsMenstruation,
+            onSave: { inputDate, weight, condition, health, isMenstruation, recordedAt in
+                Task {
+                    // 日付選択ダイアログで変更された日付をそのまま使う
+                    await weightManager.setWeight(
+                        for: inputDate,
+                        weight: weight,
+                        condition: condition,
+                        health: health,
+                        isMenstruation: isMenstruation,
+                        recordedAt: recordedAt
+                    )
+
+                    // カレンダー側の選択日も更新
+                    selectedDate = inputDate
+
+                    // 別月に飛んだ場合は currentMonthOffset も合わせる
+                    let diff = calendar.dateComponents([.month], from: Date(), to: inputDate).month ?? 0
+                    currentMonthOffset = diff
+                }
+            },
+            onDelete: {
+                Task {
+                    await weightManager.deleteWeight(for: selectedDate)
+                }
+            }
+        )
+    }
+
+    // MARK: - Analytics Section
+
+    private var analyticsSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+
+            // 見出し＋月別 / 年別スイッチ
+            HStack {
+                Text("データ分析")
+                    .font(.headline)
+
+                Spacer()
+
+                Picker("", selection: $chartMode) {
+                    Text("月別").tag(ChartMode.monthly)
+                    Text("年別").tag(ChartMode.yearly)
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 200)
+            }
+            .padding(.horizontal, 20)
+
+            // グラフ
+            Group {
+                switch chartMode {
+                case .monthly:
+                    MonthlyWeightChart(
+                        calendar: calendar,
+                        baseMonth: displayedMonthDate,
+                        weightManager: weightManager
+                    )
+                case .yearly:
+                    YearlyWeightPlaceholder()
+                }
+            }
+            .padding(.horizontal, 20)
+
+            // 目標体重カード
+            goalSection
+                .padding(.horizontal, 20)
+                .padding(.bottom, 12)
+        }
+    }
+
+    // MARK: - Goal Section
+
+    private var goalSection: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("目標体重")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                Text(goalText)
+                    .font(.headline)
+            }
+
+            Spacer()
+
+            Button("変更") {
+                let g = weightManager.goalWeight
+                goalInputText = g > 0 ? String(format: "%.1f", g) : ""
+                showGoalAlert = true
+            }
+            .font(.subheadline.bold())
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(.systemBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.black.opacity(0.05), lineWidth: 1)
+        )
+    }
+
+    private var goalText: String {
+        let g = weightManager.goalWeight
+        if g > 0 {
+            return String(format: "%.1f kg", g)
+        } else {
+            return "未設定"
+        }
+    }
+
+    // MARK: - Goal Alert Content
+
+    private var alertGoalInputContent: some View {
+        VStack(spacing: 12) {
+            TextField("例: 55.0", text: $goalInputText)
+                .keyboardType(.decimalPad)
+                .textFieldStyle(.roundedBorder)
+
+            HStack {
+                Button("キャンセル", role: .cancel) { }
+
+                Spacer()
+
+                Button("保存") {
+                    if let v = Double(goalInputText) {
+                        Task {
+                            // ← WeightManager 側の定義に合わせてラベル無し
+                            await weightManager.setGoal(v)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Monthly Chart
+
+private struct MonthlyPoint: Identifiable {
+    let id = UUID()
+    let day: Int
+    let weight: Double
+}
+
+private struct MonthlyWeightChart: View {
+    let calendar: Calendar
+    let baseMonth: Date
+    @ObservedObject var weightManager: WeightManager
+
+    private var points: [MonthlyPoint] {
+        guard
+            let range = calendar.range(of: .day, in: .month, for: baseMonth),
+            let firstDay = calendar.date(from: calendar.dateComponents([.year, .month], from: baseMonth))
+        else { return [] }
+
+        var results: [MonthlyPoint] = []
+
+        for day in range {
+            if let date = calendar.date(byAdding: .day, value: day - 1, to: firstDay),
+               let w = weightManager.weight(on: date) {
+                results.append(MonthlyPoint(day: day, weight: w))
+            }
+        }
+        return results.sorted { $0.day < $1.day }
+    }
+
+    private var averageWeight: Double? {
+        guard !points.isEmpty else { return nil }
+        let sum = points.reduce(0.0) { $0 + $1.weight }
+        return sum / Double(points.count)
     }
 
     private var monthTitle: String {
-        let date = calendar.date(byAdding: .month, value: currentMonthOffset, to: Date())!
         let f = DateFormatter()
         f.locale = Locale(identifier: "ja_JP")
-        f.dateFormat = "yyyy年M月"
-        return f.string(from: date)
+        f.dateFormat = "M"
+        return f.string(from: baseMonth)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("\(monthTitle)月の体重推移")
+                .font(.subheadline.bold())
+
+            if points.isEmpty {
+                Text("この月の体重データはまだありません。")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 120, alignment: .center)
+                    .padding(.top, 16)
+            } else {
+                Chart {
+                    ForEach(points) { point in
+                        LineMark(
+                            x: .value("Day", point.day),
+                            y: .value("Weight", point.weight)
+                        )
+                        PointMark(
+                            x: .value("Day", point.day),
+                            y: .value("Weight", point.weight)
+                        )
+                    }
+
+                    // 平均線
+                    if let avg = averageWeight {
+                        RuleMark(
+                            y: .value("平均", avg)
+                        )
+                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                        .foregroundStyle(Color.orange.opacity(0.8))
+                    }
+
+                    // 目標体重
+                    let goal = weightManager.goalWeight
+                    if goal > 0 {
+                        RuleMark(
+                            y: .value("目標", goal)
+                        )
+                        .foregroundStyle(Color.red.opacity(0.8))
+                    }
+                }
+                .chartYAxisLabel("kg")
+                .chartXAxis {
+                    AxisMarks(values: .stride(by: 5))
+                }
+                .frame(height: 240)
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color(.systemBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.black.opacity(0.05), lineWidth: 1)
+        )
+    }
+}
+
+// MARK: - Yearly Placeholder
+
+private struct YearlyWeightPlaceholder: View {
+    var body: some View {
+        VStack(spacing: 8) {
+            Text("年別の体重推移")
+                .font(.subheadline.bold())
+
+            Text("年別チャートは今後のアップデートで追加予定です。")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .frame(maxWidth: .infinity, minHeight: 120, alignment: .center)
+                .padding(.top, 16)
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color(.systemBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.black.opacity(0.05), lineWidth: 1)
+        )
     }
 }

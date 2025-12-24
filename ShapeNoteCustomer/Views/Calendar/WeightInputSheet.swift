@@ -1,206 +1,362 @@
 import SwiftUI
-import ShapeCore
+import FirebaseFirestore
+import FirebaseAuth
+
+// 5段階体調レベル（この画面専用）
+private enum HealthLevel5: String, CaseIterable {
+    case veryBad    // とても悪い
+    case bad        // 悪い
+    case normal     // ふつう
+    case good       // 良い
+    case great      // とても良い
+
+    var emoji: String {
+        switch self {
+        case .veryBad:  return "😫"
+        case .bad:      return "😣"
+        case .normal:   return "😐"
+        case .good:     return "🙂"
+        case .great:    return "😄"
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .veryBad:  return "とても悪い"
+        case .bad:      return "悪い"
+        case .normal:   return "ふつう"
+        case .good:     return "良い"
+        case .great:    return "とても良い"
+        }
+    }
+}
+
+// 測定条件＋アイコン
+private struct ConditionItem: Identifiable {
+    let id = UUID()
+    let title: String
+    let systemImage: String
+}
+
+// 起床後〜就寝前まで（アイコン付き）
+private let conditionItems: [ConditionItem] = [
+    .init(title: "起床後",  systemImage: "sunrise.fill"),
+    .init(title: "朝食後",  systemImage: "sun.max"),
+    .init(title: "昼食後",  systemImage: "sun.max.fill"),
+    .init(title: "日中",    systemImage: "clock"),
+    .init(title: "夕食後",  systemImage: "sunset"),
+    .init(title: "入浴前",  systemImage: "drop"),
+    .init(title: "入浴後",  systemImage: "drop.fill"),
+    .init(title: "就寝前",  systemImage: "bed.double.fill")
+]
 
 struct WeightInputSheet: View {
+    // CalendarView から渡ってくる引数
     var date: Date
     @Binding var isPresented: Bool
     var existingWeight: Double? = nil
     var goalWeight: Double? = nil
-    var onSave: (Double, String, Date) -> Void
+    var existingCondition: String? = nil
+    var existingHealth: String? = nil          // Firestore 上は String
+    var existingIsMenstruation: Bool? = nil
+
+    /// 保存時コールバック
+    /// newDate, weight, condition, health(rawValue), isMenstruation, recordedAt
+    var onSave: (Date, Double, String, String?, Bool, Date) -> Void
     var onDelete: (() -> Void)? = nil
 
+    // MARK: - State
+
     @State private var inputWeight: Double = 0.0
-    @State private var selectedMeasure: MeasureCondition = .wake
-    @State private var selectedHealth: HealthCondition = .normal
+    @State private var selectedCondition: String = "起床後"
+    @State private var selectedHealth: HealthLevel5 = .normal
+    @State private var isMenstruation: Bool = false
     @State private var recordTime: Date = Date()
+    /// シート内で編集する日付（カレンダーから来た日付を初期値に）
+    @State private var editingDate: Date
 
     @FocusState private var isKeyboardActive: Bool
 
-    // MARK: - Enums
-    enum MeasureCondition: String, CaseIterable, Identifiable {
-        case wake = "起床後"
-        case afterBreakfast = "朝食後"
-        case afterLunch = "昼食後"
-        case daytime = "日中"
-        case afterDinner = "夕食後"
-        case beforeBath = "入浴前"
-        case afterBath = "入浴後"
-        case beforeBed = "就寝前"
-
-        var id: String { rawValue }
-
-        var icon: String {
-            switch self {
-            case .wake: return "sunrise"
-            case .afterBreakfast: return "sun.max"
-            case .afterLunch: return "sun.max.fill"
-            case .daytime: return "clock"
-            case .afterDinner: return "fork.knife"
-            case .beforeBath: return "drop"
-            case .afterBath: return "drop.fill"
-            case .beforeBed: return "moon.stars"
-            }
-        }
+    // 独自 init で editingDate の初期値を設定
+    init(
+        date: Date,
+        isPresented: Binding<Bool>,
+        existingWeight: Double? = nil,
+        goalWeight: Double? = nil,
+        existingCondition: String? = nil,
+        existingHealth: String? = nil,
+        existingIsMenstruation: Bool? = nil,
+        onSave: @escaping (Date, Double, String, String?, Bool, Date) -> Void,
+        onDelete: (() -> Void)? = nil
+    ) {
+        self.date = date
+        self._isPresented = isPresented
+        self.existingWeight = existingWeight
+        self.goalWeight = goalWeight
+        self.existingCondition = existingCondition
+        self.existingHealth = existingHealth
+        self.existingIsMenstruation = existingIsMenstruation
+        self.onSave = onSave
+        self.onDelete = onDelete
+        _editingDate = State(initialValue: date)
     }
 
-    enum HealthCondition: String, CaseIterable, Identifiable {
-        case good, normal, bad
-
-        var id: String { rawValue }
-
-        var title: String {
-            switch self {
-            case .good: return "良い"
-            case .normal: return "普通"
-            case .bad: return "悪い"
-            }
-        }
-
-        var icon: String {
-            switch self {
-            case .good: return "face.smiling"
-            case .normal: return "face.neutral"
-            case .bad: return "face.dashed"
-            }
-        }
-
-        /// カレンダーのドットにも使える色（Theme に warning がある想定）
-        var tint: Color {
-            switch self {
-            case .good:
-                return Theme.sub
-            case .normal:
-                return Theme.accent
-            case .bad:
-                return Theme.semanticColor.warning
-            }
-        }
-    }
-
-    // MARK: - Date label
-    private var dateString: String {
+    private var editingDateString: String {
         let f = DateFormatter()
         f.locale = Locale(identifier: "ja_JP")
         f.dateFormat = "yyyy/MM/dd"
-        return f.string(from: date)
+        return f.string(from: editingDate)
     }
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 18) {
+            ScrollView {
+                VStack(spacing: 20) {
 
-                Text(existingWeight == nil ? "体重を記録" : "体重を更新")
-                    .font(.title2.bold())
-                    .padding(.top, 14)
+                    // タイトル
+                    Text("体重を記録")
+                        .font(.title2.bold())
+                        .padding(.top, 16)
 
-                Label(dateString, systemImage: "calendar")
-                    .font(.headline)
-                    .foregroundColor(Theme.dark.opacity(0.65))
+                    // MARK: 日付 ＋ 記録時刻（横並び）
+                    HStack(spacing: 12) {
+                        // 日付（編集可能）
+                        HStack(spacing: 6) {
+                            Image(systemName: "calendar")
+                            DatePicker(
+                                "",
+                                selection: $editingDate,
+                                displayedComponents: .date
+                            )
+                            .datePickerStyle(.compact)
+                            .labelsHidden()
+                        }
+                        .font(.headline)
+                        .foregroundColor(.gray.opacity(0.9))
 
-                // 🎰 スロット方式（維持）
-                SlotPicker(inputWeight: $inputWeight)
-                    .padding(.top, 2)
+                        Spacer()
 
-                // ⌨️ 直接入力（維持）
-                VStack(spacing: 6) {
-                    Text("タップして直接入力")
-                        .font(.caption)
-                        .foregroundColor(Theme.dark.opacity(0.55))
-
-                    HStack(spacing: 8) {
-                        TextField("", value: $inputWeight, format: .number)
-                            .keyboardType(.decimalPad)
-                            .textFieldStyle(.roundedBorder)
-                            .font(.system(size: 34, weight: .semibold))
-                            .multilineTextAlignment(.center)
-                            .frame(width: 140)
-                            .focused($isKeyboardActive)
-
-                        Text("kg")
-                            .font(.title3.bold())
-                            .foregroundColor(Theme.dark.opacity(0.55))
+                        // 記録時刻
+                        HStack(spacing: 4) {
+                            Image(systemName: "clock")
+                                .foregroundColor(.gray.opacity(0.8))
+                            Text(recordTime.formatted(date: .omitted, time: .shortened))
+                                .font(.subheadline.bold())
+                                .foregroundColor(.primary)
+                        }
                     }
-                }
+                    .padding(.horizontal)
 
-                Divider().opacity(0.25)
+                    // MARK: スロット式ピッカー
+                    SlotPicker(inputWeight: $inputWeight)
+                        .padding(.top, 4)
 
-                // ✅ 測定時間：横並びタップ選択
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("測定時間")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundColor(Theme.dark.opacity(0.70))
+                    // キーボード直接入力
+                    VStack(spacing: 6) {
+                        Text("タップして直接入力")
+                            .font(.caption)
+                            .foregroundColor(.gray.opacity(0.7))
 
-                    pillRow(items: MeasureCondition.allCases, selection: $selectedMeasure) { item, isSelected in
-                        pill(
-                            title: item.rawValue,
-                            systemImage: item.icon,
-                            isSelected: isSelected,
-                            selectedTint: Theme.sub
+                        HStack(spacing: 6) {
+                            TextField("", value: $inputWeight, format: .number)
+                                .keyboardType(.decimalPad)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.system(size: 34, weight: .semibold))
+                                .multilineTextAlignment(.center)
+                                .frame(width: 130)
+                                .focused($isKeyboardActive)
+
+                            Text("kg")
+                                .font(.title3.bold())
+                                .foregroundColor(.gray.opacity(0.7))
+                        }
+                    }
+
+                    Divider().padding(.vertical, 6)
+
+                    // MARK: 測定時間
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("測定時間")
+                            .font(.subheadline.bold())
+                            .foregroundColor(.gray)
+
+                        ZStack(alignment: .trailing) {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 8) {
+                                    ForEach(conditionItems) { item in
+                                        ConditionChip(
+                                            title: item.title,
+                                            systemImage: item.systemImage,
+                                            isSelected: selectedCondition == item.title
+                                        ) {
+                                            selectedCondition = item.title
+                                        }
+                                    }
+                                }
+                                .padding(.vertical, 4)
+                            }
+
+                            // 右スライドのヒント（常にうっすら表示）
+                            LinearGradient(
+                                gradient: Gradient(colors: [
+                                    Color.white.opacity(0.0),
+                                    Color.white.opacity(0.9)
+                                ]),
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                            .frame(width: 28)
+                            .allowsHitTesting(false)
+
+                            Image(systemName: "chevron.right")
+                                .font(.caption2.bold())
+                                .foregroundColor(.gray.opacity(0.6))
+                                .padding(.trailing, 4)
+                                .allowsHitTesting(false)
+                        }
+                    }
+                    .padding(.horizontal)
+
+                    // MARK: 体調（5段階）
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("体調")
+                            .font(.subheadline.bold())
+                            .foregroundColor(.gray)
+
+                        HStack(spacing: 8) {
+                            ForEach(HealthLevel5.allCases, id: \.self) { level in
+                                VStack(spacing: 4) {
+                                    Button {
+                                        selectedHealth = level
+                                    } label: {
+                                        Text(level.emoji)
+                                            .font(.system(size: 20))
+                                            .frame(width: 40, height: 40)
+                                            .background(
+                                                Circle()
+                                                    .fill(selectedHealth == level
+                                                          ? Color.green.opacity(0.12)
+                                                          : Color.white)
+                                            )
+                                            .overlay(
+                                                Circle()
+                                                    .stroke(
+                                                        selectedHealth == level
+                                                        ? Color.green.opacity(0.8)
+                                                        : Color.gray.opacity(0.3),
+                                                        lineWidth: 1
+                                                    )
+                                            )
+                                    }
+                                    .buttonStyle(.plain)
+
+                                    Text(level.label)
+                                        .font(.caption2)
+                                        .foregroundColor(.gray)
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal)
+
+                    // MARK: 生理
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("生理（任意）")
+                            .font(.subheadline.bold())
+                            .foregroundColor(.gray)
+
+                        Button {
+                            isMenstruation.toggle()
+                        } label: {
+                            HStack(spacing: 8) {
+                                Circle()
+                                    .stroke(
+                                        isMenstruation
+                                        ? Color.red.opacity(0.9)
+                                        : Color.gray.opacity(0.4),
+                                        lineWidth: 1.5
+                                    )
+                                    .frame(width: 14, height: 14)
+                                    .overlay(
+                                        Circle()
+                                            .fill(
+                                                isMenstruation
+                                                ? Color.red.opacity(0.12)
+                                                : .clear
+                                            )
+                                    )
+
+                                Text("生理中")
+                                    .font(.subheadline)
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .background(
+                                Capsule()
+                                    .fill(
+                                        isMenstruation
+                                        ? Color.red.opacity(0.09)
+                                        : Color.white
+                                    )
+                            )
+                            .overlay(
+                                Capsule()
+                                    .stroke(
+                                        isMenstruation
+                                        ? Color.red.opacity(0.9)
+                                        : Color.gray.opacity(0.3),
+                                        lineWidth: 1
+                                    )
+                            )
+                        }
+                        .buttonStyle(.plain)
+
+                        Text("※必要な方のみ記録してください。")
+                            .font(.caption2)
+                            .foregroundColor(.gray.opacity(0.7))
+                    }
+                    .padding(.horizontal)
+
+                    Spacer(minLength: 8)
+
+                    // MARK: 保存ボタン
+                    Button(existingWeight == nil ? "保存する" : "更新する") {
+                        let healthString = selectedHealth.rawValue
+                        onSave(
+                            editingDate,
+                            inputWeight,
+                            selectedCondition,
+                            healthString,
+                            isMenstruation,
+                            recordTime
                         )
-                    }
-                }
-                .padding(.horizontal)
-
-                // ✅ 体調：横並びタップ選択
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("体調")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundColor(Theme.dark.opacity(0.70))
-
-                    pillRow(items: HealthCondition.allCases, selection: $selectedHealth) { item, isSelected in
-                        pill(
-                            title: item.title,
-                            systemImage: item.icon,
-                            isSelected: isSelected,
-                            selectedTint: item.tint
-                        )
-                    }
-                }
-                .padding(.horizontal)
-
-                // ⏰ 記録時間（自動）
-                HStack {
-                    Label("記録時刻", systemImage: "clock")
-                        .foregroundColor(Theme.dark.opacity(0.65))
-                    Spacer()
-                    Text(recordTime.formatted(date: .omitted, time: .shortened))
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundColor(Theme.dark.opacity(0.85))
-                }
-                .padding(.horizontal)
-
-                Spacer()
-
-                // ✅ 保存/更新
-                Button(existingWeight == nil ? "保存する" : "更新する") {
-                    // onSave のシグネチャは変えないため、ここで pack して渡す
-                    // 例: "起床後||good"
-                    let packed = "\(selectedMeasure.rawValue)||\(selectedHealth.rawValue)"
-                    onSave(inputWeight, packed, recordTime)
-                    isPresented = false
-                }
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(Theme.sub.opacity(0.92))
-                .foregroundColor(.white)
-                .cornerRadius(12)
-                .padding(.horizontal)
-
-                // ❌ 削除
-                if existingWeight != nil {
-                    Button("削除する", role: .destructive) {
-                        onDelete?()
                         isPresented = false
                     }
                     .frame(maxWidth: .infinity)
                     .padding()
-                    .background(Theme.semanticColor.warning)
+                    .background(Color.green.opacity(0.85))
                     .foregroundColor(.white)
                     .cornerRadius(12)
                     .padding(.horizontal)
+
+                    // 削除ボタン
+                    if existingWeight != nil {
+                        Button("削除する", role: .destructive) {
+                            onDelete?()
+                            isPresented = false
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.red.opacity(0.85))
+                        .foregroundColor(.white)
+                        .cornerRadius(12)
+                        .padding(.horizontal)
+                    }
                 }
+                .padding(.bottom, 24)
             }
             .onAppear {
+                // 体重初期値
                 if let existing = existingWeight {
                     inputWeight = existing
                 } else if let goal = goalWeight {
@@ -208,6 +364,28 @@ struct WeightInputSheet: View {
                 } else {
                     inputWeight = 50.0
                 }
+
+                // 測定条件初期値
+                if let cond = existingCondition,
+                   conditionItems.map(\.title).contains(cond) {
+                    selectedCondition = cond
+                }
+
+                // 体調初期値
+                if let healthStr = existingHealth,
+                   let level = HealthLevel5(rawValue: healthStr) {
+                    selectedHealth = level
+                } else {
+                    selectedHealth = .normal
+                }
+
+                // 生理
+                if let flag = existingIsMenstruation {
+                    isMenstruation = flag
+                }
+
+                // 日付 & 記録時刻
+                editingDate = date
                 recordTime = Date()
             }
             .toolbar {
@@ -215,12 +393,14 @@ struct WeightInputSheet: View {
                 ToolbarItem(placement: .keyboard) {
                     HStack {
                         Spacer()
-                        Button("閉じる") { isKeyboardActive = false }
-                            .font(.body.bold())
+                        Button("閉じる") {
+                            isKeyboardActive = false
+                        }
+                        .font(.body.bold())
                     }
                 }
 
-                // ナビバー右上「閉じる」
+                // 右上「閉じる」
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("閉じる") { isPresented = false }
                         .font(.body.bold())
@@ -228,53 +408,44 @@ struct WeightInputSheet: View {
             }
         }
     }
+}
 
-    // MARK: - Pills UI
-    private func pillRow<Item: Identifiable & Hashable>(
-        items: [Item],
-        selection: Binding<Item>,
-        content: @escaping (Item, Bool) -> AnyView
-    ) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                ForEach(items, id: \.id) { item in
-                    let isSelected = (item == selection.wrappedValue)
-                    Button {
-                        selection.wrappedValue = item
-                    } label: {
-                        content(item, isSelected)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.vertical, 2)
-        }
-    }
+// MARK: - 条件チップ（アイコン＋テキスト）
 
-    private func pill(title: String, systemImage: String, isSelected: Bool, selectedTint: Color) -> AnyView {
-        AnyView(
-            HStack(spacing: 8) {
+private struct ConditionChip: View {
+    let title: String
+    let systemImage: String
+    let isSelected: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 4) {
                 Image(systemName: systemImage)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.caption)
                 Text(title)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.subheadline)
             }
-            .foregroundColor(isSelected ? selectedTint : Theme.dark.opacity(0.65))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
             .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(isSelected ? selectedTint.opacity(0.16) : Color.white.opacity(0.70))
+                Capsule()
+                    .fill(isSelected ? Color.green.opacity(0.12) : Color.white)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(isSelected ? selectedTint.opacity(0.35) : Color.black.opacity(0.06), lineWidth: 1)
+                Capsule()
+                    .stroke(
+                        isSelected ? Color.green.opacity(0.8) : Color.gray.opacity(0.3),
+                        lineWidth: 1
+                    )
             )
-        )
+        }
+        .buttonStyle(.plain)
     }
 }
 
-// MARK: - スロット入力（小数点バグ修正版：維持）
+// MARK: - スロット入力（既存と同じ）
+
 private struct SlotPicker: View {
     @Binding var inputWeight: Double
     private let minWeight = 30.0
