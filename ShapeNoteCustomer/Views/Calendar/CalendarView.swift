@@ -2,36 +2,43 @@ import SwiftUI
 import Charts
 import ShapeCore
 
-// グラフ表示モード
 private enum ChartMode {
     case monthly
     case yearly
 }
 
+private enum WeightSheetMode: Equatable {
+    case addNew(day: Date)
+    case edit(record: WeightRecord)
+
+    var day: Date {
+        switch self {
+        case .addNew(let d): return d
+        case .edit(let r): return r.date
+        }
+    }
+}
+
 struct CalendarView: View {
 
-    // MARK: - Properties
-
     private let calendar = Calendar(identifier: .gregorian)
-
     @StateObject private var weightManager = WeightManager()
 
     @State private var currentMonthOffset: Int = 0
     @State private var selectedDate: Date = Date()
     @State private var slideDirection: AnyTransition = .identity
 
+    @State private var showDayDetailSheet: Bool = false
     @State private var showWeightSheet: Bool = false
-    @State private var chartMode: ChartMode = .monthly
+    @State private var weightSheetMode: WeightSheetMode = .addNew(day: Date())
 
+    @State private var chartMode: ChartMode = .monthly
     @State private var showGoalAlert: Bool = false
     @State private var goalInputText: String = ""
-
-    // MARK: - Body
 
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-
                 monthHeader
 
                 CalendarGridView(
@@ -40,12 +47,10 @@ struct CalendarView: View {
                     selectedDate: $selectedDate,
                     slideDirection: $slideDirection,
                     weightManager: weightManager,
-                    onSwipe: { delta in
-                        changeMonth(by: delta)
-                    },
+                    onSwipe: { delta in changeMonth(by: delta) },
                     onDateTap: { date in
                         selectedDate = date
-                        showWeightSheet = true
+                        showDayDetailSheet = true
                     }
                 )
 
@@ -54,12 +59,31 @@ struct CalendarView: View {
             .padding(.vertical, 12)
         }
         .background(Color(.systemGroupedBackground))
-        .task {
-            await weightManager.loadWeights()
+        .task { await weightManager.loadWeights() }
+
+        // 日別詳細（一覧から record 編集へ）
+        .sheet(isPresented: $showDayDetailSheet) {
+            DayDetailSheet(
+                date: selectedDate,
+                calendar: calendar,
+                weightManager: weightManager,
+                isPresented: $showDayDetailSheet,
+                onTapAdd: {
+                    weightSheetMode = .addNew(day: selectedDate)
+                    showWeightSheet = true
+                },
+                onTapEditRecord: { record in
+                    weightSheetMode = .edit(record: record)
+                    showWeightSheet = true
+                }
+            )
         }
+
+        // 入力（新規 or 編集）
         .sheet(isPresented: $showWeightSheet) {
             weightInputSheet
         }
+
         .alert("目標体重を入力", isPresented: $showGoalAlert) {
             alertGoalInputContent
         } message: {
@@ -68,16 +92,13 @@ struct CalendarView: View {
     }
 
     // MARK: - Month Header
-
     private var displayedMonthDate: Date {
         calendar.date(byAdding: .month, value: currentMonthOffset, to: Date()) ?? Date()
     }
 
     private var monthHeader: some View {
         HStack {
-            Button {
-                changeMonth(by: -1)
-            } label: {
+            Button { changeMonth(by: -1) } label: {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 18, weight: .semibold))
                     .padding(8)
@@ -85,16 +106,12 @@ struct CalendarView: View {
 
             Spacer()
 
-            Text(displayedMonthDate, format: Date.FormatStyle()
-                .year()
-                .month(.wide))
-            .font(.title3.bold())
+            Text(displayedMonthDate, format: Date.FormatStyle().year().month(.wide))
+                .font(.title3.bold())
 
             Spacer()
 
-            Button {
-                changeMonth(by: 1)
-            } label: {
+            Button { changeMonth(by: 1) } label: {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 18, weight: .semibold))
                     .padding(8)
@@ -115,56 +132,72 @@ struct CalendarView: View {
         }
     }
 
-    // MARK: - WeightInputSheet ラッパー
-
+    // MARK: - WeightInputSheet wrapper
     private var weightInputSheet: some View {
-        let currentWeight = weightManager.weight(on: selectedDate)
-        let currentCondition = weightManager.condition(on: selectedDate)
-        let currentHealth = weightManager.health(on: selectedDate)
-        let currentIsMenstruation = weightManager.isMenstruation(on: selectedDate)
+        switch weightSheetMode {
+        case .addNew(let day):
+            return WeightInputSheet(
+                date: day,
+                isPresented: $showWeightSheet,
+                existingWeight: nil,
+                goalWeight: weightManager.goalWeight,
+                existingCondition: nil,
+                existingHealth: nil,
+                existingIsMenstruation: nil,
+                editingRecordId: nil,
+                initialRecordedAt: Date(),
+                onSave: { newDate, weight, condition, health, isMenstruation, recordedAt, editingRecordId in
+                    Task {
+                        // 新規は必ず add
+                        await weightManager.addRecord(
+                            for: newDate,
+                            weight: weight,
+                            condition: condition,
+                            health: health,
+                            isMenstruation: isMenstruation,
+                            recordedAt: recordedAt
+                        )
+                    }
+                },
+                onDelete: nil
+            )
 
-        return WeightInputSheet(
-            date: selectedDate,
-            isPresented: $showWeightSheet,
-            existingWeight: currentWeight,
-            goalWeight: weightManager.goalWeight,
-            existingCondition: currentCondition,
-            existingHealth: currentHealth,
-            existingIsMenstruation: currentIsMenstruation,
-            onSave: { inputDate, weight, condition, health, isMenstruation, recordedAt in
-                Task {
-                    // 日付選択ダイアログで変更された日付をそのまま使う
-                    await weightManager.setWeight(
-                        for: inputDate,
-                        weight: weight,
-                        condition: condition,
-                        health: health,
-                        isMenstruation: isMenstruation,
-                        recordedAt: recordedAt
-                    )
-
-                    // カレンダー側の選択日も更新
-                    selectedDate = inputDate
-
-                    // 別月に飛んだ場合は currentMonthOffset も合わせる
-                    let diff = calendar.dateComponents([.month], from: Date(), to: inputDate).month ?? 0
-                    currentMonthOffset = diff
+        case .edit(let record):
+            return WeightInputSheet(
+                date: record.date,
+                isPresented: $showWeightSheet,
+                existingWeight: record.weight,
+                goalWeight: weightManager.goalWeight,
+                existingCondition: record.condition,
+                existingHealth: record.health,
+                existingIsMenstruation: record.isMenstruation,
+                editingRecordId: record.id,
+                initialRecordedAt: record.recordedAt ?? Date(),
+                onSave: { newDate, weight, condition, health, isMenstruation, recordedAt, editingRecordId in
+                    guard let rid = editingRecordId else { return }
+                    Task {
+                        await weightManager.updateRecord(
+                            recordId: rid,
+                            date: newDate,
+                            weight: weight,
+                            condition: condition,
+                            health: health,
+                            isMenstruation: isMenstruation,
+                            recordedAt: recordedAt
+                        )
+                    }
+                },
+                onDelete: {
+                    Task { await weightManager.deleteRecord(recordId: record.id) }
                 }
-            },
-            onDelete: {
-                Task {
-                    await weightManager.deleteWeight(for: selectedDate)
-                }
-            }
-        )
+            )
+        }
     }
 
-    // MARK: - Analytics Section
-
+    // MARK: - Analytics
     private var analyticsSection: some View {
         VStack(alignment: .leading, spacing: 16) {
 
-            // 見出し＋月別 / 年別スイッチ
             HStack {
                 Text("データ分析")
                     .font(.headline)
@@ -180,7 +213,6 @@ struct CalendarView: View {
             }
             .padding(.horizontal, 20)
 
-            // グラフ
             Group {
                 switch chartMode {
                 case .monthly:
@@ -195,15 +227,13 @@ struct CalendarView: View {
             }
             .padding(.horizontal, 20)
 
-            // 目標体重カード
             goalSection
                 .padding(.horizontal, 20)
                 .padding(.bottom, 12)
         }
     }
 
-    // MARK: - Goal Section
-
+    // MARK: - Goal
     private var goalSection: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
@@ -237,14 +267,8 @@ struct CalendarView: View {
 
     private var goalText: String {
         let g = weightManager.goalWeight
-        if g > 0 {
-            return String(format: "%.1f kg", g)
-        } else {
-            return "未設定"
-        }
+        return g > 0 ? String(format: "%.1f kg", g) : "未設定"
     }
-
-    // MARK: - Goal Alert Content
 
     private var alertGoalInputContent: some View {
         VStack(spacing: 12) {
@@ -254,15 +278,10 @@ struct CalendarView: View {
 
             HStack {
                 Button("キャンセル", role: .cancel) { }
-
                 Spacer()
-
                 Button("保存") {
                     if let v = Double(goalInputText) {
-                        Task {
-                            // ← WeightManager 側の定義に合わせてラベル無し
-                            await weightManager.setGoal(v)
-                        }
+                        Task { await weightManager.setGoal(v) }
                     }
                 }
             }
@@ -271,7 +290,7 @@ struct CalendarView: View {
     }
 }
 
-// MARK: - Monthly Chart
+// MARK: - Monthly Chart（同一日複数なら最新を採用）
 
 private struct MonthlyPoint: Identifiable {
     let id = UUID()
@@ -282,7 +301,7 @@ private struct MonthlyPoint: Identifiable {
 private struct MonthlyWeightChart: View {
     let calendar: Calendar
     let baseMonth: Date
-    @ObservedObject var weightManager: WeightManager
+    let weightManager: WeightManager
 
     private var points: [MonthlyPoint] {
         guard
@@ -294,8 +313,8 @@ private struct MonthlyWeightChart: View {
 
         for day in range {
             if let date = calendar.date(byAdding: .day, value: day - 1, to: firstDay),
-               let w = weightManager.weight(on: date) {
-                results.append(MonthlyPoint(day: day, weight: w))
+               let latest = weightManager.latestRecord(on: date) {
+                results.append(MonthlyPoint(day: day, weight: latest.weight))
             }
         }
         return results.sorted { $0.day < $1.day }
@@ -308,10 +327,7 @@ private struct MonthlyWeightChart: View {
     }
 
     private var monthTitle: String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "ja_JP")
-        f.dateFormat = "M"
-        return f.string(from: baseMonth)
+        baseMonth.formatted(Date.FormatStyle().month(.twoDigits))
     }
 
     var body: some View {
@@ -338,28 +354,20 @@ private struct MonthlyWeightChart: View {
                         )
                     }
 
-                    // 平均線
                     if let avg = averageWeight {
-                        RuleMark(
-                            y: .value("平均", avg)
-                        )
-                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
-                        .foregroundStyle(Color.orange.opacity(0.8))
+                        RuleMark(y: .value("平均", avg))
+                            .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                            .foregroundStyle(Color.orange.opacity(0.8))
                     }
 
-                    // 目標体重
                     let goal = weightManager.goalWeight
                     if goal > 0 {
-                        RuleMark(
-                            y: .value("目標", goal)
-                        )
-                        .foregroundStyle(Color.red.opacity(0.8))
+                        RuleMark(y: .value("目標", goal))
+                            .foregroundStyle(Color.red.opacity(0.8))
                     }
                 }
                 .chartYAxisLabel("kg")
-                .chartXAxis {
-                    AxisMarks(values: .stride(by: 5))
-                }
+                .chartXAxis { AxisMarks(values: .stride(by: 5)) }
                 .frame(height: 240)
             }
         }
@@ -374,8 +382,6 @@ private struct MonthlyWeightChart: View {
         )
     }
 }
-
-// MARK: - Yearly Placeholder
 
 private struct YearlyWeightPlaceholder: View {
     var body: some View {

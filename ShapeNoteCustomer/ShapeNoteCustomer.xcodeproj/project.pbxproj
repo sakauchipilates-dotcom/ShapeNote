@@ -51,6 +51,7 @@
 		6D8D8E342EF97C3600AC15D6 /* LegalDocuments.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D8D8E332EF97C3600AC15D6 /* LegalDocuments.swift */; };
 		6D8D8E362EF97C4700AC15D6 /* LegalConsentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D8D8E352EF97C4700AC15D6 /* LegalConsentView.swift */; };
 		6D8D8E382EF9A97F00AC15D6 /* HealthEnums.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D8D8E372EF9A97F00AC15D6 /* HealthEnums.swift */; };
+		6D8D8E3A2EFCCD4D00AC15D6 /* DayDetailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D8D8E392EFCCD4D00AC15D6 /* DayDetailSheet.swift */; };
 		6D930BE52EF80C6F00051AFC /* PostureMultiResultHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D930BE42EF80C6F00051AFC /* PostureMultiResultHubView.swift */; };
 		6D930BE72EF80EF500051AFC /* VoiceGuide.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D930BE62EF80EF500051AFC /* VoiceGuide.swift */; };
 		6D930BE92EF8119C00051AFC /* PostureShotDirection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D930BE82EF8119C00051AFC /* PostureShotDirection.swift */; };
@@ -130,6 +131,7 @@
 		6D8D8E332EF97C3600AC15D6 /* LegalDocuments.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegalDocuments.swift; sourceTree = "<group>"; };
 		6D8D8E352EF97C4700AC15D6 /* LegalConsentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegalConsentView.swift; sourceTree = "<group>"; };
 		6D8D8E372EF9A97F00AC15D6 /* HealthEnums.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthEnums.swift; sourceTree = "<group>"; };
+		6D8D8E392EFCCD4D00AC15D6 /* DayDetailSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DayDetailSheet.swift; sourceTree = "<group>"; };
 		6D930BE42EF80C6F00051AFC /* PostureMultiResultHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostureMultiResultHubView.swift; sourceTree = "<group>"; };
 		6D930BE62EF80EF500051AFC /* VoiceGuide.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceGuide.swift; sourceTree = "<group>"; };
 		6D930BE82EF8119C00051AFC /* PostureShotDirection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostureShotDirection.swift; sourceTree = "<group>"; };
@@ -415,6 +417,7 @@
 				6DF01B6D2EB5934B00B0CC1B /* CalendarGridView.swift */,
 				6DF01B6F2EB5936200B0CC1B /* WeightAnalysisView.swift */,
 				6DF01B4B2EB46D7300B0CC1B /* WeightChartView.swift */,
+				6D8D8E392EFCCD4D00AC15D6 /* DayDetailSheet.swift */,
 			);
 			path = Calendar;
 			sourceTree = "<group>";
@@ -510,6 +513,7 @@
 				6DF01B272EB4436D00B0CC1B /* ChatListView.swift in Sources */,
 				6D8D8E2C2EF8FC1A00AC15D6 /* FeatureFlags.swift in Sources */,
 				6D930BED2EF824F300051AFC /* PostureMultiAnalysisView.swift in Sources */,
+				6D8D8E3A2EFCCD4D00AC15D6 /* DayDetailSheet.swift in Sources */,
 				6D930BEB2EF824D500051AFC /* PostureMultiAnalysisVM.swift in Sources */,
 				6D8763AB2EC8D40100BD89CA /* PostureAnalysisEntryView.swift in Sources */,
 				6D8763912EC77B5D00BD89CA /* GuideStepCard.swift in Sources */,
