@@ -48,7 +48,10 @@ struct DayDetailSheet: View {
     }
 
     // MARK: - Health decoding
-    private struct HealthPayload: Codable { let level: String; let markers: [String] }
+    private struct HealthPayload: Codable {
+        let level: String
+        let markers: [String]
+    }
 
     private func decodeHealthPayload(from raw: String) -> HealthPayload? {
         guard let data = raw.data(using: .utf8) else { return nil }
@@ -94,6 +97,27 @@ struct DayDetailSheet: View {
     // MARK: - UI state
     @State private var confirmDelete: WeightRecord? = nil
 
+    // ★トースト
+    @State private var toastText: String = ""
+    @State private var showToast: Bool = false
+    @State private var toastTask: Task<Void, Never>? = nil
+
+    private func presentToast(_ text: String) {
+        toastTask?.cancel()
+        toastText = text
+
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
+            showToast = true
+        }
+
+        toastTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_000_000_000) // 2s
+            withAnimation(.easeOut(duration: 0.25)) {
+                showToast = false
+            }
+        }
+    }
+
     private var records: [WeightRecord] {
         weightManager.records(on: date)
     }
@@ -104,29 +128,60 @@ struct DayDetailSheet: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 14) {
-
-                    // 日付
-                    HStack {
-                        Image(systemName: "calendar")
-                            .foregroundColor(.secondary)
-                        Text(dateTitle)
-                            .font(.headline)
-                        Spacer()
+            Group {
+                if records.isEmpty {
+                    ScrollView {
+                        VStack(spacing: 14) {
+                            headerRow
+                            emptyStateCard
+                            Spacer(minLength: 10)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 24)
                     }
-                    .padding(.top, 4)
+                } else {
+                    // swipeActions は List が最も安定
+                    List {
+                        Section {
+                            headerRow
+                                .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 6, trailing: 16))
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                        }
 
-                    if records.isEmpty {
-                        emptyStateCard
-                    } else {
-                        recordsListBlock
+                        Section {
+                            HStack {
+                                Text("この日の記録")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundColor(Theme.dark.opacity(0.80))
+                                Spacer()
+                                Text("\(records.count)件")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundColor(.secondary)
+                            }
+                            .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 0, trailing: 16))
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+
+                            ForEach(records) { record in
+                                recordCard(record)
+                                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                                    .listRowBackground(Color.clear)
+                                    .listRowSeparator(.hidden)
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                        Button(role: .destructive) {
+                                            confirmDelete = record
+                                        } label: {
+                                            Label("削除", systemImage: "trash")
+                                        }
+                                    }
+                            }
+                        }
                     }
-
-                    Spacer(minLength: 10)
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                    .background(Color(.systemGroupedBackground))
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 24)
             }
             .navigationTitle("記録")
             .navigationBarTitleDisplayMode(.inline)
@@ -136,7 +191,6 @@ struct DayDetailSheet: View {
                         .font(.body.bold())
                 }
 
-                // ＋は常に新規追加
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
                         isPresented = false
@@ -148,24 +202,49 @@ struct DayDetailSheet: View {
                     .accessibilityLabel("新規追加")
                 }
             }
-            .confirmationDialog(
-                "この記録を削除しますか？",
-                isPresented: Binding(
-                    get: { confirmDelete != nil },
-                    set: { if !$0 { confirmDelete = nil } }
-                ),
-                titleVisibility: .visible
-            ) {
-                Button("削除する", role: .destructive) {
-                    guard let target = confirmDelete else { return }
-                    Task { await weightManager.deleteRecord(recordId: target.id) }
-                    confirmDelete = nil
+            // 削除確認（安全性）
+            .alert("この記録を削除しますか？", isPresented: Binding(
+                get: { confirmDelete != nil },
+                set: { if !$0 { confirmDelete = nil } }
+            ), presenting: confirmDelete) { record in
+                Button("削除", role: .destructive) {
+                    Task {
+                        await weightManager.deleteRecord(recordId: record.id)
+                        await MainActor.run {
+                            presentToast("削除しました")
+                            confirmDelete = nil
+                        }
+                    }
                 }
                 Button("キャンセル", role: .cancel) {
                     confirmDelete = nil
                 }
+            } message: { _ in
+                Text("削除すると元に戻せません。")
+            }
+            // ★トースト表示
+            .overlay(alignment: .bottom) {
+                if showToast {
+                    toastView(text: toastText)
+                        .padding(.bottom, 18)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .zIndex(999)
+                }
             }
         }
+    }
+
+    // MARK: - Header
+
+    private var headerRow: some View {
+        HStack {
+            Image(systemName: "calendar")
+                .foregroundColor(.secondary)
+            Text(dateTitle)
+                .font(.headline)
+            Spacer()
+        }
+        .padding(.top, 4)
     }
 
     // MARK: - Subviews
@@ -189,29 +268,11 @@ struct DayDetailSheet: View {
         )
     }
 
-    private var recordsListBlock: some View {
-        VStack(alignment: .leading, spacing: 10) {
-
-            HStack {
-                Text("この日の記録")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(Theme.dark.opacity(0.80))
-                Spacer()
-                Text("\(records.count)件")
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(.secondary)
-            }
-
-            VStack(spacing: 10) {
-                ForEach(records) { record in
-                    recordCard(record)
-                }
-            }
-        }
-    }
-
     private func recordCard(_ record: WeightRecord) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let level = healthLevelRaw(for: record)
+        let label = healthLabel(for: record)
+
+        return VStack(alignment: .leading, spacing: 10) {
 
             HStack {
                 Text("記録時刻")
@@ -223,47 +284,27 @@ struct DayDetailSheet: View {
                     .foregroundColor(Theme.dark.opacity(0.75))
             }
 
-            conditionBlock(record)
+            conditionBlock(record, level: level, label: label)
 
-            HStack(spacing: 10) {
-                Button {
-                    isPresented = false
-                    DispatchQueue.main.async { onTapEditRecord(record) }
-                } label: {
-                    Text("この記録を編集する")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(Theme.sub.opacity(0.16))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .stroke(Theme.sub.opacity(0.35), lineWidth: 1)
-                        )
-                        .foregroundColor(Theme.dark.opacity(0.90))
-                }
-                .buttonStyle(.plain)
-
-                Button(role: .destructive) {
-                    confirmDelete = record
-                } label: {
-                    Image(systemName: "trash")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(width: 44, height: 44)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(Color.red.opacity(0.10))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .stroke(Color.red.opacity(0.25), lineWidth: 1)
-                        )
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("削除")
+            Button {
+                isPresented = false
+                DispatchQueue.main.async { onTapEditRecord(record) }
+            } label: {
+                Text("この記録を編集する")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Theme.sub.opacity(0.16))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(Theme.sub.opacity(0.35), lineWidth: 1)
+                    )
+                    .foregroundColor(Theme.dark.opacity(0.90))
             }
+            .buttonStyle(.plain)
         }
         .padding(12)
         .background(
@@ -276,17 +317,14 @@ struct DayDetailSheet: View {
         )
     }
 
-    private func conditionBlock(_ record: WeightRecord) -> some View {
+    private func conditionBlock(_ record: WeightRecord, level: String?, label: String?) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("コンディション")
                 .font(.subheadline.weight(.semibold))
                 .foregroundColor(Theme.dark.opacity(0.80))
 
             VStack(spacing: 0) {
-                compactRow(
-                    title: "体重",
-                    systemImage: "scalemass"
-                ) {
+                compactRow(title: "体重", systemImage: "scalemass") {
                     Text(String(format: "%.1f kg", record.weight))
                         .font(.subheadline.weight(.semibold))
                         .foregroundColor(Theme.dark.opacity(0.85))
@@ -294,10 +332,7 @@ struct DayDetailSheet: View {
 
                 dividerLine
 
-                compactRow(
-                    title: "測定条件",
-                    systemImage: "clock"
-                ) {
+                compactRow(title: "測定条件", systemImage: "clock") {
                     Text(record.condition ?? "—")
                         .font(.subheadline.weight(.semibold))
                         .foregroundColor((record.condition == nil) ? Theme.dark.opacity(0.35) : Theme.dark.opacity(0.85))
@@ -305,13 +340,7 @@ struct DayDetailSheet: View {
 
                 dividerLine
 
-                compactRow(
-                    title: "体調",
-                    systemImage: "face.smiling"
-                ) {
-                    let level = healthLevelRaw(for: record)
-                    let label = healthLabel(for: record)
-
+                compactRow(title: "体調", systemImage: "face.smiling") {
                     if let level, let label {
                         HStack(spacing: 8) {
                             Circle()
@@ -373,5 +402,24 @@ struct DayDetailSheet: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 12)
+    }
+
+    // MARK: - Toast View
+    private func toastView(text: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.subheadline.weight(.semibold))
+            Text(text)
+                .font(.subheadline.weight(.semibold))
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(
+            Capsule()
+                .fill(Color.black.opacity(0.82))
+        )
+        .foregroundColor(.white)
+        .shadow(color: Color.black.opacity(0.18), radius: 10, x: 0, y: 6)
+        .padding(.horizontal, 16)
     }
 }

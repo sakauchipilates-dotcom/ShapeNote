@@ -135,6 +135,7 @@ struct CalendarView: View {
     // MARK: - WeightInputSheet wrapper
     private var weightInputSheet: some View {
         switch weightSheetMode {
+
         case .addNew(let day):
             return WeightInputSheet(
                 date: day,
@@ -158,8 +159,7 @@ struct CalendarView: View {
                             recordedAt: recordedAt
                         )
                     }
-                },
-                onDelete: nil
+                }
             )
 
         case .edit(let record):
@@ -186,9 +186,6 @@ struct CalendarView: View {
                             recordedAt: recordedAt
                         )
                     }
-                },
-                onDelete: {
-                    Task { await weightManager.deleteRecord(recordId: record.id) }
                 }
             )
         }
