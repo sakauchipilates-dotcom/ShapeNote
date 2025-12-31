@@ -8,31 +8,6 @@ private struct HealthPayload: Codable {
     let markers: [String]
 }
 
-// MARK: - 5段階体調レベル
-private enum HealthLevel5: String, CaseIterable {
-    case veryBad, bad, normal, good, great
-
-    var color: Color {
-        switch self {
-        case .veryBad: return Theme.warning.opacity(0.35)
-        case .bad:     return Theme.warning.opacity(0.22)
-        case .normal:  return Theme.accent.opacity(0.18)
-        case .good:    return Theme.sub.opacity(0.20)
-        case .great:   return Theme.sub.opacity(0.28)
-        }
-    }
-
-    var label: String {
-        switch self {
-        case .veryBad: return "とても悪い"
-        case .bad:     return "悪い"
-        case .normal:  return "ふつう"
-        case .good:    return "良い"
-        case .great:   return "とても良い"
-        }
-    }
-}
-
 // MARK: - 測定条件＋アイコン
 private struct ConditionItem: Identifiable {
     let id = UUID()
@@ -69,6 +44,29 @@ private let customMarkerCandidates: [CustomMarker] = [
 ]
 
 private let customMarkerKeySet: Set<String> = Set(customMarkerCandidates.map { $0.key })
+
+// MARK: - 体調（HealthLevel5）表示補助（※enum定義はしない）
+private let healthLevelsOrdered: [HealthLevel5] = [.veryBad, .bad, .normal, .good, .great]
+
+private func healthColor(_ level: HealthLevel5) -> Color {
+    switch level {
+    case .veryBad: return Theme.warning.opacity(0.35)
+    case .bad:     return Theme.warning.opacity(0.22)
+    case .normal:  return Theme.accent.opacity(0.18)
+    case .good:    return Theme.sub.opacity(0.20)
+    case .great:   return Theme.sub.opacity(0.28)
+    }
+}
+
+private func healthLabel(_ level: HealthLevel5) -> String {
+    switch level {
+    case .veryBad: return "とても悪い"
+    case .bad:     return "悪い"
+    case .normal:  return "ふつう"
+    case .good:    return "良い"
+    case .great:   return "とても良い"
+    }
+}
 
 // MARK: - 本体
 struct WeightInputSheet: View {
@@ -131,7 +129,6 @@ struct WeightInputSheet: View {
             ScrollView {
                 VStack(spacing: 20) {
 
-                    // タイトル
                     Text(editingRecordId == nil ? "体重を記録" : "記録を編集")
                         .font(.title2.bold())
                         .padding(.top, 16)
@@ -237,11 +234,11 @@ struct WeightInputSheet: View {
                             .foregroundColor(.gray)
 
                         HStack(spacing: 12) {
-                            ForEach(HealthLevel5.allCases, id: \.self) { level in
+                            ForEach(healthLevelsOrdered, id: \.self) { level in
                                 VStack(spacing: 6) {
                                     Button { selectedHealth = level } label: {
                                         Circle()
-                                            .fill(level.color)
+                                            .fill(healthColor(level))
                                             .frame(width: 32, height: 32)
                                             .overlay(
                                                 Circle()
@@ -255,7 +252,7 @@ struct WeightInputSheet: View {
                                     }
                                     .buttonStyle(.plain)
 
-                                    Text(level.label)
+                                    Text(healthLabel(level))
                                         .font(.caption2)
                                         .foregroundColor(.gray)
                                 }
@@ -291,7 +288,6 @@ struct WeightInputSheet: View {
 
                     Spacer(minLength: 8)
 
-                    // 保存/更新
                     Button(editingRecordId == nil ? "保存する" : "更新する") {
                         let healthString = makeHealthString()
                         let isMenstruation = selectedMarkers.contains("menstruation")
@@ -313,14 +309,10 @@ struct WeightInputSheet: View {
                     .foregroundColor(.white)
                     .cornerRadius(12)
                     .padding(.horizontal)
-
-                    // ※削除は DayDetailSheet の swipeActions に統一（ここでは出さない）
                 }
                 .padding(.bottom, 24)
             }
-            .onAppear {
-                applyInitialState()
-            }
+            .onAppear { applyInitialState() }
             .toolbar {
                 ToolbarItem(placement: .keyboard) {
                     HStack {
@@ -340,7 +332,6 @@ struct WeightInputSheet: View {
     // MARK: - Initial State
 
     private func applyInitialState() {
-        // 体重
         if let existing = existingWeight {
             inputWeight = existing
         } else if let goal = goalWeight, goal > 0 {
@@ -349,20 +340,14 @@ struct WeightInputSheet: View {
             inputWeight = 50.0
         }
 
-        // 測定条件
         if let cond = existingCondition, !cond.isEmpty {
             selectedCondition = cond
         } else {
             selectedCondition = "起床後"
         }
 
-        // 体調 + マーク
         loadExistingHealth()
-
-        // 日付
         editingDate = date
-
-        // 記録時刻（編集は引き継ぎ / 新規は現在）
         recordTime = (editingRecordId == nil) ? Date() : initialRecordedAt
     }
 
@@ -381,11 +366,9 @@ struct WeightInputSheet: View {
 
         } else if let raw = existingHealth,
                   let level = HealthLevel5(rawValue: raw) {
-            // 旧データ（レベルだけ）
             initialLevel = level
         }
 
-        // 旧 isMenstruation = true の場合は生理マークを付与
         if existingIsMenstruation == true {
             initialMarkers.insert("menstruation")
         }
@@ -398,20 +381,15 @@ struct WeightInputSheet: View {
         if selectedMarkers.contains(key) {
             selectedMarkers.remove(key)
         } else {
-            // 最大2つまで
             guard selectedMarkers.count < 2 else { return }
             selectedMarkers.insert(key)
         }
     }
 
     private func makeHealthString() -> String? {
-        let payload = HealthPayload(
-            level: selectedHealth.rawValue,
-            markers: Array(selectedMarkers)
-        )
+        let payload = HealthPayload(level: selectedHealth.rawValue, markers: Array(selectedMarkers))
         guard let data = try? JSONEncoder().encode(payload),
               let string = String(data: data, encoding: .utf8) else {
-            // フォールバック：レベルのみ保存
             return selectedHealth.rawValue
         }
         return string
@@ -429,23 +407,14 @@ private struct ConditionChip: View {
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 4) {
-                Image(systemName: systemImage)
-                    .font(.caption)
-                Text(title)
-                    .font(.subheadline)
+                Image(systemName: systemImage).font(.caption)
+                Text(title).font(.subheadline)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
-            .background(
-                Capsule()
-                    .fill(isSelected ? Theme.sub.opacity(0.12) : Color(.systemBackground))
-            )
+            .background(Capsule().fill(isSelected ? Theme.sub.opacity(0.12) : Color(.systemBackground)))
             .overlay(
-                Capsule()
-                    .stroke(
-                        isSelected ? Theme.sub.opacity(0.80) : Color.gray.opacity(0.30),
-                        lineWidth: 1
-                    )
+                Capsule().stroke(isSelected ? Theme.sub.opacity(0.8) : Color.gray.opacity(0.3), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
@@ -460,23 +429,14 @@ private struct CustomMarkerChip: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) {
-                Image(systemName: marker.systemImage)
-                    .font(.caption)
-                Text(marker.label)
-                    .font(.caption)
+                Image(systemName: marker.systemImage).font(.caption)
+                Text(marker.label).font(.caption)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(
-                Capsule()
-                    .fill(isSelected ? Theme.sub.opacity(0.12) : Color(.systemBackground))
-            )
+            .background(Capsule().fill(isSelected ? Theme.sub.opacity(0.12) : Color(.systemBackground)))
             .overlay(
-                Capsule()
-                    .stroke(
-                        isSelected ? Theme.sub.opacity(0.80) : Color.gray.opacity(0.30),
-                        lineWidth: 1
-                    )
+                Capsule().stroke(isSelected ? Theme.sub.opacity(0.8) : Color.gray.opacity(0.3), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
@@ -494,25 +454,16 @@ private struct SlotPicker: View {
         let intPart = Int(safeWeight)
         let decimalPart = Int((safeWeight * 10).truncatingRemainder(dividingBy: 10))
 
-        // 3桁固定（例: 55 -> "055"）
         let padded = String(format: "%03d", intPart)
         let digits = padded.map { Int(String($0)) ?? 0 }
 
         HStack(spacing: 0) {
-            // 百・十・一（先頭0は薄く表示）
             ForEach(0..<3, id: \.self) { index in
-                pickerColumn(
-                    value: digits[index],
-                    place: 2 - index
-                )
-                .opacity(index == 0 && digits[0] == 0 ? 0.35 : 1.0)
+                pickerColumn(value: digits[index], place: 2 - index)
+                    .opacity(index == 0 && digits[0] == 0 ? 0.35 : 1.0)
             }
 
-            Text(".")
-                .font(.title)
-                .frame(width: 28)
-
-            // 小数第1位
+            Text(".").font(.title).frame(width: 28)
             pickerColumn(value: decimalPart, place: -1)
         }
         .font(.title)
@@ -529,14 +480,14 @@ private struct SlotPicker: View {
                 var decimal = Int((inputWeight * 10).truncatingRemainder(dividingBy: 10))
 
                 switch place {
-                case 2: // 百
+                case 2:
                     integerPart = (integerPart % 100) + (newValue * 100)
-                case 1: // 十
+                case 1:
                     let ones = integerPart % 10
                     integerPart = (newValue * 10) + ones
-                case 0: // 一
+                case 0:
                     integerPart = (integerPart / 10) * 10 + newValue
-                case -1: // 小数1位
+                case -1:
                     decimal = newValue
                 default:
                     break

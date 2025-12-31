@@ -1,8 +1,11 @@
+// WeightManager.swift
+
 import SwiftUI
 import FirebaseFirestore
 import FirebaseAuth
 import Combine
 import ShapeCore
+import Foundation
 
 // MARK: - WeightRecord モデル
 struct WeightRecord: Identifiable, Equatable {
@@ -22,12 +25,6 @@ final class WeightManager: ObservableObject {
     @Published var height: Double = 1.65
 
     private let db = Firestore.firestore()
-
-    // 新 health 形式用 Payload（デコード用途）
-    private struct HealthPayload: Codable {
-        let level: String
-        let markers: [String]
-    }
 
     // MARK: - Load
     func loadWeights() async {
@@ -134,7 +131,6 @@ final class WeightManager: ObservableObject {
                 "updatedAt": FieldValue.serverTimestamp()
             ]
 
-            // health は「そのまま保存」or 未指定なら削除
             if let health = health {
                 data["health"] = health
             } else {
@@ -173,6 +169,7 @@ final class WeightManager: ObservableObject {
     }
 
     // MARK: - Goal / Height
+    /// 既存API（残す：他のファイル互換）
     func setGoal(_ value: Double) async {
         guard let uid = Auth.auth().currentUser?.uid else { return }
         do {
@@ -181,6 +178,11 @@ final class WeightManager: ObservableObject {
         } catch {
             print("⚠️ 目標体重保存エラー: \(error.localizedDescription)")
         }
+    }
+
+    /// CalendarView が呼ぶ互換API
+    func setGoalWeight(_ value: Double) async {
+        await setGoal(value)
     }
 
     func setHeight(_ value: Double) async {
@@ -193,7 +195,7 @@ final class WeightManager: ObservableObject {
         }
     }
 
-    // MARK: - Query (日付単位で取得)
+    // MARK: - Query (日付単位で取得) ※複数入力対応
     func records(on day: Date) -> [WeightRecord] {
         let key = Self.dayKey(day)
         return weights
@@ -216,6 +218,78 @@ final class WeightManager: ObservableObject {
     func isMenstruation(on date: Date) -> Bool { records(on: date).contains(where: { $0.isMenstruation }) }
     func recordedTime(on date: Date) -> Date? { latestRecord(on: date)?.recordedAt }
 
+    // MARK: - Health decode (統一：HealthStoragePayload)
+    /// raw が JSON の場合のみ decode して返す（旧形式は nil）
+    func healthPayload(from raw: String?) -> HealthStoragePayload? {
+        guard let raw,
+              let data = raw.data(using: .utf8)
+        else { return nil }
+        return try? JSONDecoder().decode(HealthStoragePayload.self, from: data)
+    }
+
+    /// 旧("normal") / 新(JSON) 両対応で HealthLevel5 を返す
+    func healthLevel5(from raw: String?) -> HealthLevel5? {
+        guard let raw else { return nil }
+
+        // 新形式(JSON)
+        if let payload = healthPayload(from: raw),
+           let level = HealthLevel5(rawValue: payload.level) {
+            return level
+        }
+
+        // 旧形式("normal" 等)
+        return HealthLevel5(rawValue: raw)
+    }
+
+    /// 旧/新 両対応で markers を返す（旧形式は空）
+    func healthMarkers(from raw: String?) -> [String] {
+        guard let payload = healthPayload(from: raw) else { return [] }
+        return payload.markers
+    }
+
+    // MARK: - Month/Year helpers（Charts用）
+    func records(inSameMonthAs baseMonth: Date, calendar: Calendar) -> [WeightRecord] {
+        weights.filter { calendar.isDate($0.date, equalTo: baseMonth, toGranularity: .month) }
+    }
+
+    func records(inSameYearAs baseYear: Date, calendar: Calendar) -> [WeightRecord] {
+        weights.filter { calendar.isDate($0.date, equalTo: baseYear, toGranularity: .year) }
+    }
+
+    // 同日の複数入力を潰して「日ごと最新」にする
+    func latestPerDay(records: [WeightRecord], calendar: Calendar) -> [WeightRecord] {
+        var latestByKey: [String: WeightRecord] = [:]
+
+        for r in records {
+            let key = Self.dayKey(r.date)
+            if let existing = latestByKey[key] {
+                let a = r.recordedAt ?? r.date
+                let b = existing.recordedAt ?? existing.date
+                if a > b { latestByKey[key] = r }
+            } else {
+                latestByKey[key] = r
+            }
+        }
+        return Array(latestByKey.values)
+    }
+
+    // 月ごと最新（1..12）
+    func latestPerMonth(records: [WeightRecord], calendar: Calendar) -> [Int: WeightRecord] {
+        var latest: [Int: WeightRecord] = [:]
+
+        for r in records {
+            let m = calendar.component(.month, from: r.date)
+            if let existing = latest[m] {
+                let a = r.recordedAt ?? r.date
+                let b = existing.recordedAt ?? existing.date
+                if a > b { latest[m] = r }
+            } else {
+                latest[m] = r
+            }
+        }
+        return latest
+    }
+
     // MARK: - Utilities
     static func dayKey(_ date: Date) -> String {
         let f = DateFormatter()
@@ -227,16 +301,14 @@ final class WeightManager: ObservableObject {
     }
 
     static func makeDocId(date: Date, recordedAt: Date) -> String {
-        // 例: 2025-12-25_1766629046
         let day = dayKey(date)
         let sec = Int(recordedAt.timeIntervalSince1970)
         return "\(day)_\(sec)"
     }
 
     private func healthLevelCode(from raw: String?) -> String? {
-        guard let raw = raw else { return nil }
-        if let data = raw.data(using: .utf8),
-           let payload = try? JSONDecoder().decode(HealthPayload.self, from: data) {
+        guard let raw else { return nil }
+        if let payload = healthPayload(from: raw) {
             return payload.level
         }
         return raw
@@ -255,8 +327,15 @@ final class WeightManager: ObservableObject {
     }
 
     var bmi: Double? {
-        guard let latest = weights.sorted(by: { ($0.recordedAt ?? $0.date) < ($1.recordedAt ?? $1.date) }).last else { return nil }
-        guard height > 0 else { return nil }
+        let latest = weights
+            .sorted {
+                let l = $0.recordedAt ?? $0.date
+                let r = $1.recordedAt ?? $1.date
+                return l > r
+            }
+            .first
+
+        guard let latest, height > 0 else { return nil }
         return latest.weight / (height * height)
     }
 

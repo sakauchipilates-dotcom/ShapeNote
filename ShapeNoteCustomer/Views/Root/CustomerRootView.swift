@@ -6,10 +6,13 @@ struct CustomerRootView: View {
     @EnvironmentObject private var appState: CustomerAppState
     @State private var selectedTab = 0
 
-    var body: some View {
+    // Rootで1つ生成して使い回す（正解）
+    @StateObject private var weightManager = WeightManager()
 
+    var body: some View {
         TabView(selection: $selectedTab) {
-            CalendarView()
+
+            CalendarView(weightManager: weightManager)
                 .tabItem { Label("記録", systemImage: "chart.line.uptrend.xyaxis") }
                 .tag(0)
 
@@ -29,14 +32,19 @@ struct CustomerRootView: View {
                 .tabItem { Label("マイページ", systemImage: "person.crop.circle") }
                 .tag(4)
         }
+        // 1) 起動時に一度ロード（最重要）
         .task {
             await appState.refreshLegalConsentState()
+            await weightManager.loadWeights()
+        }
+        // 2) タブを「記録」に戻した時に再同期したい場合（任意だが安定）
+        .onChange(of: selectedTab) { _, newValue in
+            guard newValue == 0 else { return }
+            Task { await weightManager.loadWeights() }
         }
         .fullScreenCover(isPresented: $appState.needsLegalConsent) {
             LegalConsentView(
-                onAgree: {
-                    Task { await appState.acceptLatestLegal() }
-                }
+                onAgree: { Task { await appState.acceptLatestLegal() } }
             )
             .interactiveDismissDisabled(true)
         }

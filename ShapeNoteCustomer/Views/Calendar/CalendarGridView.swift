@@ -1,27 +1,7 @@
+// CalendarGridView.swift
+
 import SwiftUI
 import ShapeCore
-
-// MARK: - health ペイロード（{"level":"normal","markers":["jogging"]}）
-
-private struct HealthPayload: Codable {
-    let level: String
-    let markers: [String]
-}
-
-// 5段階体調レベル（色だけ使う）
-private enum HealthLevel5: String {
-    case veryBad, bad, normal, good, great
-
-    var color: Color {
-        switch self {
-        case .veryBad: return Theme.warning.opacity(0.35)
-        case .bad:     return Theme.warning.opacity(0.22)
-        case .normal:  return Theme.accent.opacity(0.18)
-        case .good:    return Theme.sub.opacity(0.20)
-        case .great:   return Theme.sub.opacity(0.28)
-        }
-    }
-}
 
 struct CalendarGridView: View {
     let calendar: Calendar
@@ -33,7 +13,6 @@ struct CalendarGridView: View {
     let onDateTap: (Date) -> Void
 
     // MARK: - Layout constants
-
     private let cellHeight: CGFloat = 65
     private let gridSpacing: CGFloat = 10
     private let columnSpacing: CGFloat = 10
@@ -96,37 +75,6 @@ struct CalendarGridView: View {
         .padding(.horizontal, 8)
     }
 
-    // MARK: - Multi-record helpers
-
-    private func dayKey(_ date: Date) -> String {
-        let f = DateFormatter()
-        f.calendar = Calendar(identifier: .gregorian)
-        f.locale = .init(identifier: "ja_JP")
-        f.timeZone = TimeZone(identifier: "Asia/Tokyo")
-        f.dateFormat = "yyyy-MM-dd"
-        return f.string(from: date)
-    }
-
-    private func records(for day: Date) -> [WeightRecord] {
-        let key = dayKey(day)
-        return weightManager.weights
-            .filter { dayKey($0.date) == key }
-            .sorted {
-                let l = $0.recordedAt ?? $0.date
-                let r = $1.recordedAt ?? $1.date
-                return l > r
-            }
-    }
-
-    private func latestRecord(for day: Date) -> WeightRecord? {
-        records(for: day).first
-    }
-
-    private func decodePayload(from raw: String) -> HealthPayload? {
-        guard let data = raw.data(using: .utf8) else { return nil }
-        return try? JSONDecoder().decode(HealthPayload.self, from: data)
-    }
-
     // MARK: - Day Cell
 
     @ViewBuilder
@@ -138,9 +86,9 @@ struct CalendarGridView: View {
             let isSelected = calendar.isDate(date, inSameDayAs: selectedDate)
             let dayNumber = calendar.component(.day, from: date)
 
-            let dayRecords = records(for: date)
+            let dayRecords = weightManager.records(on: date)
             let hasAnyRecord = !dayRecords.isEmpty
-            let latest = latestRecord(for: date)
+            let latest = dayRecords.first
 
             Button {
                 selectedDate = date
@@ -165,7 +113,7 @@ struct CalendarGridView: View {
                             Spacer().frame(height: 12)
                         }
 
-                        markerRow(for: date, records: dayRecords)
+                        markerRow(records: dayRecords)
                             .frame(height: 14)
                             .padding(.top, 4)
                     }
@@ -185,7 +133,7 @@ struct CalendarGridView: View {
     // MARK: - Marker Row (同一日の全レコードから union)
 
     @ViewBuilder
-    private func markerRow(for date: Date, records: [WeightRecord]) -> some View {
+    private func markerRow(records: [WeightRecord]) -> some View {
         let keys = markersForDay(records: records)
 
         if keys.isEmpty {
@@ -210,55 +158,17 @@ struct CalendarGridView: View {
         var set = Set<String>()
 
         for r in records {
-            if let raw = r.health, let payload = decodePayload(from: raw) {
-                payload.markers.forEach { set.insert($0) }
-            }
+            // markers（新形式JSONのみ）
+            weightManager.healthMarkers(from: r.health).forEach { set.insert($0) }
+
+            // 生理は別フィールド → marker に統合
             if r.isMenstruation {
                 set.insert("menstruation")
             }
         }
 
-        // 表示順は安定させる（同じ日に追加しても並びが暴れない）
+        // 表示順は安定させる
         return Array(set).sorted()
-    }
-
-    // MARK: - Health Level for background
-
-    private func healthLevel(latest: WeightRecord?) -> HealthLevel5? {
-        guard let latest else { return nil }
-
-        if let raw = latest.health, let payload = decodePayload(from: raw),
-           let level = HealthLevel5(rawValue: payload.level) {
-            return level
-        }
-
-        // 旧データ（"normal" など直入れ）
-        if let raw = latest.health, let level = HealthLevel5(rawValue: raw) {
-            return level
-        }
-
-        return nil
-    }
-
-    // MARK: - Marker symbols
-
-    private func markerSymbol(for key: String) -> (name: String, color: Color)? {
-        switch key {
-        case "menstruation":
-            return ("heart.fill", Color.pink.opacity(0.9))
-        case "jogging":
-            return ("figure.run", Theme.accent)
-        case "training":
-            return ("dumbbell.fill", Theme.sub)
-        case "pilates_yoga":
-            return ("figure.mind.and.body", Theme.accent.opacity(0.95))
-        case "lesson":
-            return ("person.2.fill", Theme.accent.opacity(0.9))
-        case "study":
-            return ("book.fill", Theme.dark.opacity(0.75))
-        default:
-            return nil
-        }
     }
 
     // MARK: - Appearance utilities
@@ -270,7 +180,8 @@ struct CalendarGridView: View {
 
         let inMonth = isSameMonth(date)
 
-        if let level = healthLevel(latest: latest) {
+        // 体調色（WeightManager経由で一元解釈）
+        if let level = weightManager.healthLevel5(from: latest?.health) {
             let base = level.color
             return inMonth ? base : base.opacity(0.4)
         }
@@ -290,6 +201,27 @@ struct CalendarGridView: View {
         if isSelected { return Theme.dark.opacity(0.90) }
         if !isSameMonth(date) { return Theme.dark.opacity(0.35) }
         return Theme.dark.opacity(0.85)
+    }
+
+    // MARK: - Marker symbols（キーは WeightInputSheet と揃える）
+
+    private func markerSymbol(for key: String) -> (name: String, color: Color)? {
+        switch key {
+        case "menstruation":
+            return ("heart.fill", Color.pink.opacity(0.9))
+        case "jogging":
+            return ("figure.run", Theme.accent)
+        case "training":
+            return ("dumbbell.fill", Theme.sub)
+        case "pilates":
+            return ("figure.cooldown", Theme.accent.opacity(0.95))
+        case "lesson":
+            return ("music.note.list", Theme.accent.opacity(0.9))
+        case "study":
+            return ("book.closed.fill", Theme.dark.opacity(0.75))
+        default:
+            return nil
+        }
     }
 
     // MARK: - Month days
