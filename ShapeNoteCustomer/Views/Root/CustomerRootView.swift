@@ -16,8 +16,8 @@ struct CustomerRootView: View {
                 .tabItem { Label("記録", systemImage: "chart.line.uptrend.xyaxis") }
                 .tag(0)
 
-            ChatListView()
-                .tabItem { Label("チャット", systemImage: "bubble.left.and.bubble.right") }
+            CommunityView()
+                .tabItem { Label("コミュニティ", systemImage: "person.3.fill") }
                 .tag(1)
 
             ExerciseSheetView()
@@ -32,12 +32,10 @@ struct CustomerRootView: View {
                 .tabItem { Label("マイページ", systemImage: "person.crop.circle") }
                 .tag(4)
         }
-        // 1) 起動時に一度ロード（最重要）
         .task {
             await appState.refreshLegalConsentState()
             await weightManager.loadWeights()
         }
-        // 2) タブを「記録」に戻した時に再同期したい場合（任意だが安定）
         .onChange(of: selectedTab) { _, newValue in
             guard newValue == 0 else { return }
             Task { await weightManager.loadWeights() }

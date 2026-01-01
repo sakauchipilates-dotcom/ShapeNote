@@ -1,6 +1,5 @@
 import SwiftUI
 import FirebaseFirestore
-import FirebaseAuth
 import ShapeCore
 
 struct ChatListView: View {
@@ -18,7 +17,8 @@ struct ChatListView: View {
                 Theme.main.ignoresSafeArea()
 
                 if isLoading {
-                    ProgressView("読み込み中…").tint(Theme.sub)
+                    ProgressView("読み込み中…")
+                        .tint(Theme.sub)
                 } else if let errorMessage {
                     Text("⚠️ \(errorMessage)")
                         .foregroundColor(.red)
@@ -29,24 +29,33 @@ struct ChatListView: View {
                     chatListView
                 }
             }
-            .navigationTitle("チャット一覧")
+            .navigationTitle("個別チャット")
             .navigationBarTitleDisplayMode(.inline)
             .task { await fetchChats() }
             .refreshable { await fetchChats() }
         }
     }
 
-    // MARK: - 空表示
+    // MARK: - 空表示（初回・未相談時）
     private var emptyStateView: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 14) {
             Image(systemName: "bubble.left.and.bubble.right")
                 .font(.system(size: 48))
                 .foregroundColor(.gray.opacity(0.6))
-            Text("メッセージはまだありません")
-                .foregroundColor(.gray)
 
-            NavigationLink(destination: ChatRoomView(uid: uid, userName: userName)) {
-                Label("新しいチャットを始める", systemImage: "plus.bubble")
+            Text("まだ個別チャットはありません")
+                .font(.headline)
+                .foregroundColor(.secondary)
+
+            Text("ご相談がある場合は、\nこちらから個別チャットを開始できます。")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+
+            NavigationLink {
+                ChatRoomView(uid: uid, userName: userName)
+            } label: {
+                Label("個別チャットを開始する", systemImage: "plus.bubble")
                     .font(.headline)
                     .padding()
                     .frame(maxWidth: .infinity)
@@ -54,24 +63,30 @@ struct ChatListView: View {
                     .cornerRadius(Theme.cardRadius)
             }
             .padding(.horizontal, 40)
+            .padding(.top, 8)
         }
     }
 
     // MARK: - チャット一覧
     private var chatListView: some View {
         List(chats) { chat in
-            NavigationLink(destination: ChatRoomView(uid: chat.id ?? uid, userName: userName)) {
+            NavigationLink {
+                ChatRoomView(uid: chat.id ?? uid, userName: userName)
+            } label: {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(chat.lastSenderName)
                             .font(.headline)
                             .foregroundColor(Theme.dark)
+
                         Text(chat.lastText)
                             .font(.subheadline)
                             .foregroundColor(.gray)
                             .lineLimit(1)
                     }
+
                     Spacer()
+
                     Text(formatDate(chat.updatedAt))
                         .font(.caption)
                         .foregroundColor(.secondary)
@@ -87,6 +102,7 @@ struct ChatListView: View {
     private func fetchChats() async {
         isLoading = true
         errorMessage = nil
+
         do {
             let snapshot = try await db.collection("chats")
                 .whereField(FieldPath.documentID(), isEqualTo: uid)
@@ -125,4 +141,6 @@ struct ChatListView: View {
     }
 }
 
-#Preview { ChatListView() }
+#Preview {
+    ChatListView()
+}

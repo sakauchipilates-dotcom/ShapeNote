@@ -54,7 +54,7 @@ struct ChatRoomView: View {
             .padding()
             .background(Color(.systemBackground))
         }
-        .navigationTitle("管理者とのチャット")
+        .navigationTitle("個別チャット")
         .navigationBarTitleDisplayMode(.inline)
         .task { await loadIcons() }
     }

@@ -50,9 +50,9 @@ struct AdminMemberDetailView: View {
     // MARK: - View
     var body: some View {
         Form {
-            // MARK: - 来店履歴セクション
+
+            // 来店履歴
             Section {
-                // 🔹 preselectedUserとして現在のuserを渡す
                 NavigationLink {
                     AdminVisitHistoryView(preselectedUser: user)
                 } label: {
@@ -73,7 +73,32 @@ struct AdminMemberDetailView: View {
                     .foregroundColor(.secondary)
             }
 
-            // MARK: - 基本情報
+            // ✅ クーポン管理
+            Section {
+                NavigationLink {
+                    CouponManagerView(
+                        preselectedUserId: user.id,
+                        preselectedUserName: user.name
+                    )
+                } label: {
+                    HStack {
+                        Image(systemName: "ticket.fill")
+                            .foregroundColor(.green)
+                        Text("クーポンを管理")
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .foregroundColor(.tertiaryText)
+                    }
+                }
+            } header: {
+                Text("クーポン")
+            } footer: {
+                Text("クーポンの発行・編集・使用済み⇄未使用の切替・削除が行えます。")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+            }
+
+            // 基本情報
             Section(header: Text("基本情報")) {
                 HStack {
                     TextField("姓", text: $lastName)
@@ -94,7 +119,6 @@ struct AdminMemberDetailView: View {
                 }
                 .pickerStyle(.segmented)
 
-                // 生年月日
                 DatePicker(
                     "生年月日",
                     selection: Binding<Date>(
@@ -119,7 +143,7 @@ struct AdminMemberDetailView: View {
                 }
             }
 
-            // MARK: - 保存
+            // 保存
             Section {
                 Button {
                     Task { await saveChanges() }
@@ -133,7 +157,7 @@ struct AdminMemberDetailView: View {
                 .disabled(isSaving)
             }
 
-            // MARK: - メッセージ
+            // メッセージ
             if let msg = saveMessage {
                 Section {
                     Text(msg)
