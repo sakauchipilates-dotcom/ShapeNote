@@ -6,6 +6,7 @@ import CoreImage.CIFilterBuiltins
 import UIKit
 
 struct MembershipCardView: View {
+    @EnvironmentObject private var appState: CustomerAppState
     @EnvironmentObject var imageVM: ProfileImageVM
 
     @State private var displayId: String = "未設定"
@@ -43,7 +44,7 @@ struct MembershipCardView: View {
                     .rotation3DEffect(.degrees(isFlipped ? 0 : -180), axis: (x: 0, y: 1, z: 0))
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 160) // 少し縦長
+            .frame(height: 160)
             .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .onTapGesture {
                 withAnimation(.spring(response: 0.45, dampingFraction: 0.86)) {
@@ -51,7 +52,6 @@ struct MembershipCardView: View {
                 }
             }
 
-            // 案内文（表/裏で切り替え）
             Text(isFlipped ? "カードをタップで表面に戻る" : "カードをタップで裏面（バーコード）を表示")
                 .font(.caption)
                 .foregroundColor(.secondary)
@@ -87,14 +87,21 @@ struct MembershipCardView: View {
                             .foregroundColor(.secondary)
                             .lineLimit(1)
                             .minimumScaleFactor(0.85)
-
                         Spacer()
                     }
 
-                    HStack(spacing: 10) {
-                        pillChip(title: "RANK", value: rankLabel)
-                        pillChip(title: "POINT", value: "\(points)")
-                        Spacer()
+                    // ✅ ここが修正ポイント：チップを2段構成にして潰れないようにする
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 10) {
+                            pillChip(title: "RANK", value: rankLabel)
+                            pillChip(title: "POINT", value: "\(points)")
+                            Spacer()
+                        }
+
+                        HStack(spacing: 10) {
+                            subscriptionChip
+                            Spacer()
+                        }
                     }
 
                     Spacer()
@@ -108,18 +115,25 @@ struct MembershipCardView: View {
         }
     }
 
+    /// ✅ チップ内Textが「文字単位で改行」されないように固定
     private func pillChip(title: String, value: String) -> some View {
         HStack(spacing: 8) {
             Text(title)
                 .font(.caption.weight(.bold))
                 .foregroundColor(Theme.dark.opacity(0.70))
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
 
             Text(value)
                 .font(.caption.weight(.semibold))
                 .foregroundColor(Theme.dark.opacity(0.88))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .fixedSize(horizontal: true, vertical: false)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
+        .frame(minWidth: 92) // ✅ ここで潰れすぎを防止
         .background(
             Capsule()
                 .fill(Color.white.opacity(0.35))
@@ -127,6 +141,52 @@ struct MembershipCardView: View {
                     Capsule().stroke(Color.black.opacity(0.06), lineWidth: 1)
                 )
         )
+    }
+
+    private var subscriptionChip: some View {
+        let state = appState.subscriptionState
+        let isPremiumNow = state.isPremium(now: Date())
+
+        return HStack(spacing: 6) {
+            Image(systemName: isPremiumNow ? "crown.fill" : "lock.fill")
+                .font(.caption.weight(.bold))
+
+            Text(subscriptionLabel)
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .fixedSize(horizontal: true, vertical: false)
+        }
+        .foregroundColor(isPremiumNow ? Theme.accent : .secondary)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(
+            Capsule()
+                .fill(isPremiumNow ? Theme.accent.opacity(0.15) : Color.black.opacity(0.05))
+                .overlay(
+                    Capsule().stroke(Color.black.opacity(0.06), lineWidth: 1)
+                )
+        )
+        .accessibilityLabel(isPremiumNow ? "プレミアム会員" : "無料会員")
+    }
+
+    private var subscriptionLabel: String {
+        let state = appState.subscriptionState
+
+        guard state.isPremium(now: Date()) else {
+            return "無料会員"
+        }
+
+        if let exp = state.expiresAt {
+            let f = DateFormatter()
+            f.locale = Locale(identifier: "ja_JP")
+            f.calendar = Calendar(identifier: .gregorian)
+            f.timeZone = TimeZone(identifier: "Asia/Tokyo")
+            f.dateFormat = "〜M/d"
+            return "プレミアム \(f.string(from: exp))"
+        }
+
+        return "プレミアム"
     }
 
     private var profileIconButton: some View {
@@ -197,10 +257,9 @@ struct MembershipCardView: View {
             }
             .padding(16)
         }
-        // 反転は不要（ここでやるとテキストまで左右反転する）
     }
 
-    // MARK: - Barcode (real if possible, else dummy + overlay)
+    // MARK: - Barcode
     @ViewBuilder
     private func barcodeView(for text: String) -> some View {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -221,7 +280,6 @@ struct MembershipCardView: View {
                     .background(barcodePanelBackground)
             }
 
-            // 薄い「実装予定」オーバーレイ
             ZStack {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(Color.white.opacity(0.40))

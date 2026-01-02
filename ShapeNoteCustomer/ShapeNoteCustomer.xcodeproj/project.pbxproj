@@ -86,6 +86,9 @@
 		6DE9AD542F079E9000310C04 /* CommunityFeedDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DE9AD532F079E9000310C04 /* CommunityFeedDetailView.swift */; };
 		6DE9AD562F07C36200310C04 /* SubscriptionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DE9AD552F07C36200310C04 /* SubscriptionState.swift */; };
 		6DE9AD582F07CBF700310C04 /* UsageLimiters.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DE9AD572F07CBF700310C04 /* UsageLimiters.swift */; };
+		6DE9AD5B2F07D51D00310C04 /* SubscriptionRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DE9AD5A2F07D51D00310C04 /* SubscriptionRepository.swift */; };
+		6DE9AD5D2F07D52F00310C04 /* FirestoreSubscriptionRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DE9AD5C2F07D52F00310C04 /* FirestoreSubscriptionRepository.swift */; };
+		6DE9AD622F08164C00310C04 /* SubscriptionGateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DE9AD612F08164C00310C04 /* SubscriptionGateView.swift */; };
 		6DF019192EAC531300B0CC1B /* ShapeCore in Frameworks */ = {isa = PBXBuildFile; productRef = 6DF019182EAC531300B0CC1B /* ShapeCore */; };
 		6DF01B262EB4436D00B0CC1B /* CalendarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DF01B172EB4436D00B0CC1B /* CalendarView.swift */; };
 		6DF01B272EB4436D00B0CC1B /* ChatListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DF01B182EB4436D00B0CC1B /* ChatListView.swift */; };
@@ -184,6 +187,9 @@
 		6DE9AD532F079E9000310C04 /* CommunityFeedDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommunityFeedDetailView.swift; sourceTree = "<group>"; };
 		6DE9AD552F07C36200310C04 /* SubscriptionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionState.swift; sourceTree = "<group>"; };
 		6DE9AD572F07CBF700310C04 /* UsageLimiters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageLimiters.swift; sourceTree = "<group>"; };
+		6DE9AD5A2F07D51D00310C04 /* SubscriptionRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionRepository.swift; sourceTree = "<group>"; };
+		6DE9AD5C2F07D52F00310C04 /* FirestoreSubscriptionRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirestoreSubscriptionRepository.swift; sourceTree = "<group>"; };
+		6DE9AD612F08164C00310C04 /* SubscriptionGateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionGateView.swift; sourceTree = "<group>"; };
 		6DF01B172EB4436D00B0CC1B /* CalendarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarView.swift; sourceTree = "<group>"; };
 		6DF01B182EB4436D00B0CC1B /* ChatListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatListView.swift; sourceTree = "<group>"; };
 		6DF01B192EB4436D00B0CC1B /* ContactConfirmView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactConfirmView.swift; sourceTree = "<group>"; };
@@ -226,6 +232,7 @@
 		6D4DE4582EAA5DC5003B9894 = {
 			isa = PBXGroup;
 			children = (
+				6DE9AD592F07D50D00310C04 /* Repositories */,
 				6D8D8E282EF8F74500AC15D6 /* Utilities */,
 				6DF01B3E2EB446E700B0CC1B /* Views */,
 				6DF01B3F2EB4470A00B0CC1B /* Models */,
@@ -435,9 +442,27 @@
 			path = Root;
 			sourceTree = "<group>";
 		};
+		6DE9AD592F07D50D00310C04 /* Repositories */ = {
+			isa = PBXGroup;
+			children = (
+				6DE9AD5A2F07D51D00310C04 /* SubscriptionRepository.swift */,
+				6DE9AD5C2F07D52F00310C04 /* FirestoreSubscriptionRepository.swift */,
+			);
+			path = Repositories;
+			sourceTree = "<group>";
+		};
+		6DE9AD602F08163000310C04 /* Common */ = {
+			isa = PBXGroup;
+			children = (
+				6DE9AD612F08164C00310C04 /* SubscriptionGateView.swift */,
+			);
+			path = Common;
+			sourceTree = "<group>";
+		};
 		6DF01B3E2EB446E700B0CC1B /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				6DE9AD602F08163000310C04 /* Common */,
 				6D8D8E552F05EF7100AC15D6 /* Community */,
 				6DA8DACF2EBB4C6200DACEED /* Root */,
 				6DA8DACE2EBB4C3A00DACEED /* Components */,
@@ -621,11 +646,13 @@
 				6DA8DABF2EBB439E00DACEED /* ShapeNoteCustomerApp.swift in Sources */,
 				6D7D65FF2EC1E7E0003D1943 /* VisitHistoryItem.swift in Sources */,
 				6D8D8E362EF97C4700AC15D6 /* LegalConsentView.swift in Sources */,
+				6DE9AD622F08164C00310C04 /* SubscriptionGateView.swift in Sources */,
 				6D8D8E482F04292E00AC15D6 /* YearlyHealthPieChart.swift in Sources */,
 				6DF01B702EB5936200B0CC1B /* WeightAnalysisView.swift in Sources */,
 				6D8763A52EC88C5C00BD89CA /* PhotoCaptureHandler.swift in Sources */,
 				6D8D8E572F05EF8200AC15D6 /* CommunityView.swift in Sources */,
 				6D4AA9082EC5C4A8004EEBBA /* CameraPreview.swift in Sources */,
+				6DE9AD5D2F07D52F00310C04 /* FirestoreSubscriptionRepository.swift in Sources */,
 				6D8D8E322EF97A1200AC15D6 /* LegalAgreementView.swift in Sources */,
 				6D8D8E382EF9A97F00AC15D6 /* HealthEnums.swift in Sources */,
 				6D7D65FB2EC1B7C3003D1943 /* ExerciseExplainDetailView.swift in Sources */,
@@ -643,6 +670,7 @@
 				6DF01B432EB449A100B0CC1B /* ContactHistoryView.swift in Sources */,
 				6D87639B2EC8753300BD89CA /* PostureCaptureConfirmView.swift in Sources */,
 				6DCAB4B02EB98A4500E7B0D8 /* ExerciseItemViewData.swift in Sources */,
+				6DE9AD5B2F07D51D00310C04 /* SubscriptionRepository.swift in Sources */,
 				6D8D8E4E2F04E93900AC15D6 /* CouponDetailView.swift in Sources */,
 				6DF01B332EB4436D00B0CC1B /* VersionInfoView.swift in Sources */,
 				6D37D1872EB63824003CE780 /* ChatRoomView.swift in Sources */,

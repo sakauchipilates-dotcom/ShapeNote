@@ -29,9 +29,7 @@ struct PostureCameraFlowView: View {
 
             case .camera:
                 PostureAnalysisCameraView(
-                    onClose: {
-                        closeAll()
-                    },
+                    onClose: { closeAll() },
                     onCaptured: {
                         // 4枚揃ったら統合解析へ
                         step = .integratedAnalysis
@@ -64,9 +62,7 @@ struct PostureCameraFlowView: View {
             Task { await guardMonthlyLimitIfNeeded() }
         }
         .alert("利用制限", isPresented: $showGateAlert) {
-            Button("OK", role: .cancel) {
-                closeAll()
-            }
+            Button("OK", role: .cancel) { closeAll() }
         } message: {
             Text(gateMessage)
         }
