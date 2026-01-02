@@ -11,20 +11,32 @@ final class CustomerAppState: ObservableObject {
     /// true の間は同意画面を強制表示
     @Published var needsLegalConsent: Bool = false
 
+    /// ✅ 無料 / プレミアム状態（アプリ全体のゲート根拠）
+    @Published var subscriptionState: SubscriptionState = .free
+
     private let db = Firestore.firestore()
+    private var subscriptionListener: ListenerRegistration?
 
     init() {
         if let user = Auth.auth().currentUser {
             print("🔁 起動時のFirebaseAuthユーザー（顧客）: \(user.email ?? "nil")")
             isLoggedIn = true
 
-            // ✅ 起動時に必ず判定（これが一番確実）
-            Task { await refreshLegalConsentState() }
+            Task {
+                await refreshLegalConsentState()
+                await refreshSubscriptionState()
+                startSubscriptionListener()
+            }
         } else {
             print("⚠️ 顧客アプリ：currentUser が nil（再ログインが必要）")
             isLoggedIn = false
             needsLegalConsent = false
+            subscriptionState = .free
         }
+    }
+
+    deinit {
+        subscriptionListener?.remove()
     }
 
     func setLoggedIn(_ value: Bool) {
@@ -34,13 +46,18 @@ final class CustomerAppState: ObservableObject {
 
             if value {
                 await refreshLegalConsentState()
+                await refreshSubscriptionState()
+                startSubscriptionListener()
             } else {
+                subscriptionListener?.remove()
+                subscriptionListener = nil
                 self.needsLegalConsent = false
+                self.subscriptionState = .free
             }
         }
     }
 
-    /// Firestore の同意状況を見て、必要なら同意画面を出す
+    // MARK: - Legal
     func refreshLegalConsentState() async {
         guard let uid = Auth.auth().currentUser?.uid else {
             needsLegalConsent = false
@@ -52,11 +69,9 @@ final class CustomerAppState: ObservableObject {
             let data = snap.data() ?? [:]
             let legal = data["legal"] as? [String: Any] ?? [:]
 
-            // Firestore 側（未同意なら 0 扱い）
             let acceptedPrivacy = legal["privacyVersion"] as? Int ?? 0
             let acceptedTerms   = legal["termsVersion"] as? Int ?? 0
 
-            // アプリ側（今回ここを上げた）
             let requiredPrivacy = LegalDocuments.privacyPolicyVersion
             let requiredTerms   = LegalDocuments.termsVersion
 
@@ -66,7 +81,6 @@ final class CustomerAppState: ObservableObject {
             print("🧾 legal check: accepted P=\(acceptedPrivacy) T=\(acceptedTerms) / required P=\(requiredPrivacy) T=\(requiredTerms) => show=\(shouldShow)")
 
         } catch {
-            // ネットワーク不安定時は “安全側” に倒して出す（運用上おすすめ）
             needsLegalConsent = true
             print("⚠️ legal check failed => show consent (safe). error: \(error.localizedDescription)")
         }
@@ -92,13 +106,71 @@ final class CustomerAppState: ObservableObject {
         }
     }
 
+    // MARK: - Subscription
+    /// ✅ Firestore から subscription 状態を取得
+    func refreshSubscriptionState() async {
+        guard let uid = Auth.auth().currentUser?.uid else {
+            subscriptionState = .free
+            return
+        }
+
+        do {
+            let snap = try await db.collection("users").document(uid).getDocument()
+            let data = snap.data() ?? [:]
+            let sub = data["subscription"] as? [String: Any] ?? [:]
+
+            let tierRaw = (sub["tier"] as? String) ?? "free"
+            let tier = SubscriptionTier(rawValue: tierRaw) ?? .free
+
+            // updatedAt は任意
+            let updatedAt = (sub["updatedAt"] as? Timestamp)?.dateValue()
+
+            subscriptionState = SubscriptionState(tier: tier, updatedAt: updatedAt)
+            print("💳 subscription refreshed: tier=\(tier.rawValue)")
+
+        } catch {
+            // ネットワーク不安定時は “無料扱い” に倒す（課金誤開放を防ぐ）
+            subscriptionState = .free
+            print("⚠️ subscription refresh failed => treat as free. error: \(error.localizedDescription)")
+        }
+    }
+
+    /// ✅ subscription の変更をリアルタイム反映（管理者側で tier を切替えた時も即反映）
+    private func startSubscriptionListener() {
+        subscriptionListener?.remove()
+        subscriptionListener = nil
+
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+
+        subscriptionListener = db.collection("users").document(uid).addSnapshotListener { [weak self] snap, err in
+            guard let self else { return }
+            if let err {
+                print("⚠️ subscription listener error: \(err.localizedDescription)")
+                return
+            }
+            let data = snap?.data() ?? [:]
+            let sub = data["subscription"] as? [String: Any] ?? [:]
+            let tierRaw = (sub["tier"] as? String) ?? "free"
+            let tier = SubscriptionTier(rawValue: tierRaw) ?? .free
+            let updatedAt = (sub["updatedAt"] as? Timestamp)?.dateValue()
+
+            Task { @MainActor in
+                self.subscriptionState = SubscriptionState(tier: tier, updatedAt: updatedAt)
+            }
+        }
+    }
+
+    // MARK: - Logout
     func forceLogout() async {
         do {
             try Auth.auth().signOut()
         } catch {
             print("⚠️ signOut error: \(error.localizedDescription)")
         }
+        subscriptionListener?.remove()
+        subscriptionListener = nil
         isLoggedIn = false
         needsLegalConsent = false
+        subscriptionState = .free
     }
 }

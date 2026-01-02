@@ -15,17 +15,14 @@ struct PostureCaptureConfirmView: View {
 
             VStack(spacing: 28) {
 
-                // MARK: - タイトル
                 Text("この写真でよろしいですか？")
                     .font(.title3.weight(.semibold))
                     .foregroundColor(Theme.dark.opacity(0.85))
                     .padding(.top, 36)
 
-                // MARK: - 撮影画像（ブランドカードスタイル）
                 if let img = cameraVM.capturedImage {
 
                     ZStack {
-                        // カード背景
                         RoundedRectangle(cornerRadius: 24)
                             .fill(Color.white.opacity(0.92))
                             .overlay(
@@ -34,7 +31,6 @@ struct PostureCaptureConfirmView: View {
                             )
                             .shadow(color: Theme.dark.opacity(0.12), radius: 10, y: 6)
 
-                        // 画像
                         Image(uiImage: img)
                             .resizable()
                             .scaledToFit()
@@ -66,7 +62,6 @@ struct PostureCaptureConfirmView: View {
 
                 Spacer()
 
-                // MARK: - 撮り直すボタン
                 GlassButton(
                     title: "撮り直す",
                     systemImage: "arrow.counterclockwise.circle.fill",
@@ -77,16 +72,19 @@ struct PostureCaptureConfirmView: View {
                 .frame(maxWidth: 300)
                 .padding(.horizontal)
 
-                // MARK: - OKボタン
                 GlassButton(
                     title: "OK",
                     systemImage: "checkmark.circle.fill",
                     background: Theme.accent
                 ) {
+                    // ✅ nil の時は遷移させない（安全）
+                    guard cameraVM.capturedImage != nil else { return }
                     onConfirm()
                 }
                 .frame(maxWidth: 300)
                 .padding(.horizontal)
+                .opacity(cameraVM.capturedImage == nil ? 0.45 : 1.0)
+                .disabled(cameraVM.capturedImage == nil)
 
                 Spacer().frame(height: 32)
             }

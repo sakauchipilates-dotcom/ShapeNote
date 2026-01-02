@@ -34,7 +34,15 @@ struct CustomerRootView: View {
         }
         .task {
             await appState.refreshLegalConsentState()
+            await appState.refreshSubscriptionState()
             await weightManager.loadWeights()
+
+            // ✅ 初回注入
+            weightManager.setSubscriptionState(appState.subscriptionState)
+        }
+        .onReceive(appState.$subscriptionState) { state in
+            // ✅ subscription が変わったら VM に反映
+            weightManager.setSubscriptionState(state)
         }
         .onChange(of: selectedTab) { _, newValue in
             guard newValue == 0 else { return }

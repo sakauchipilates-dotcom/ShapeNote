@@ -1,12 +1,22 @@
 import SwiftUI
 import ShapeCore
+import FirebaseAuth
+import FirebaseFirestore
 
 struct PostureAnalysisEntryView: View {
+
+    @EnvironmentObject private var appState: CustomerAppState
 
     // ガイド表示
     @State private var showGuide: Bool = false
     // カメラフロー
     @State private var showCameraFlow: Bool = false
+
+    // Gate UI
+    @State private var showGateAlert: Bool = false
+    @State private var gateMessage: String = ""
+
+    private let db = Firestore.firestore()
 
     var body: some View {
         ZStack {
@@ -16,27 +26,23 @@ struct PostureAnalysisEntryView: View {
 
                 Spacer().frame(height: 48)
 
-                // MARK: - アイコン
                 Image(systemName: "figure.stand")
                     .resizable()
                     .scaledToFit()
                     .frame(width: 90, height: 90)
                     .foregroundColor(Theme.sub)
 
-                // MARK: - タイトル
                 Text("AI姿勢分析を始めましょう")
                     .font(.title3.bold())
                     .foregroundColor(Theme.dark)
 
-                // MARK: - 注意事項カード
                 privacyCard
                     .padding(.horizontal, 24)
 
                 Spacer()
 
-                // MARK: - 撮影開始ボタン（グラデーション）
                 Button {
-                    showGuide = true
+                    Task { await handleTapStart() }
                 } label: {
                     HStack(spacing: 10) {
                         Image(systemName: "camera.viewfinder")
@@ -64,7 +70,13 @@ struct PostureAnalysisEntryView: View {
                 .padding(.bottom, 40)
             }
         }
-        // MARK: - 撮影前ガイド
+        .alert("利用制限", isPresented: $showGateAlert) {
+            Button("OK", role: .cancel) {}
+            // ※あとで課金導線を入れるならここにボタン追加
+            // Button("プレミアムを確認") { /* paywall */ }
+        } message: {
+            Text(gateMessage)
+        }
         .fullScreenCover(isPresented: $showGuide) {
             PostureCaptureGuideView(
                 onClose: { showGuide = false },
@@ -74,9 +86,59 @@ struct PostureAnalysisEntryView: View {
                 }
             )
         }
-        // MARK: - カメラフロー
         .fullScreenCover(isPresented: $showCameraFlow) {
             PostureCameraFlowView()
+        }
+    }
+
+    // MARK: - Tap handler
+    private func handleTapStart() async {
+
+        // ✅ Premium は制限なし（現時点の仕様）
+        if appState.subscriptionState.isPremium {
+            showGuide = true
+            return
+        }
+
+        // ✅ Free は月1回（Firestoreの usage を参照）
+        let lastCaptured = await fetchLastPostureCapturedAt()
+
+        let can = SNUsageLimit.canCapturePostureFree(lastCaptured: lastCaptured)
+        if can {
+            showGuide = true
+            return
+        }
+
+        let reset = SNUsageLimit.nextPostureResetDate()
+        if let reset {
+            let f = DateFormatter()
+            f.locale = Locale(identifier: "ja_JP")
+            f.calendar = Calendar(identifier: .gregorian)
+            f.dateFormat = "M月d日"
+            gateMessage = "無料会員は姿勢分析の撮影は月1回までです。\n次回は \(f.string(from: reset)) から撮影できます。"
+        } else {
+            gateMessage = "無料会員は姿勢分析の撮影は月1回までです。次回リセット日を確認できませんでした。"
+        }
+
+        showGateAlert = true
+    }
+
+    /// users/{uid}/usage/postureLastCapturedAt を読む
+    private func fetchLastPostureCapturedAt() async -> Date? {
+        guard let uid = Auth.auth().currentUser?.uid else { return nil }
+
+        do {
+            let snap = try await db.collection("users").document(uid).getDocument()
+            let data = snap.data() ?? [:]
+            let usage = data["usage"] as? [String: Any] ?? [:]
+            let ts = usage["postureLastCapturedAt"] as? Timestamp
+            return ts?.dateValue()
+        } catch {
+            // 取得できない場合は「無料制限を厳密にかける」か「通す」か設計があるが、
+            // 課金誤開放を避けるなら “通す” より “止める” が安全。
+            // ただしUX悪化するので、まずは通す（=nil扱い）にしておく。
+            print("⚠️ fetchLastPostureCapturedAt failed: \(error.localizedDescription)")
+            return nil
         }
     }
 }
@@ -130,8 +192,6 @@ private extension PostureAnalysisEntryView {
         }
     }
 
-    /// iOS / SF Symbols差分で存在しないシンボルを指定すると表示されないことがあるため、
-    /// 利用可能ならpreferred、ダメならfallbackに切り替える。
     func safeSFSymbol(preferred: String, fallback: String) -> String {
         if UIImage(systemName: preferred) != nil { return preferred }
         return fallback

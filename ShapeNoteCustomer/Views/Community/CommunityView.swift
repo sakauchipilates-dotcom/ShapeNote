@@ -3,66 +3,31 @@ import ShapeCore
 
 struct CommunityView: View {
 
-    // ダミー：近日追加予定の入口
-    struct Feature: Identifiable {
+    @StateObject private var vm = CommunityVM()
+
+    // 近日追加予定の入口（ダミー）
+    private struct Feature: Identifiable {
         let id = UUID()
         let icon: String
         let title: String
         let subtitle: String
-    }
-
-    // ダミー：最新（お知らせ/投稿）表示用
-    struct FeedItem: Identifiable {
-        let id = UUID()
-        let title: String
-        let body: String
-        let date: Date
-        let typeLabel: String
-        let typeIcon: String
+        let destinationCategory: SNCommunityCategory?
     }
 
     private let features: [Feature] = [
-        .init(icon: "chart.line.uptrend.xyaxis", title: "記録の共有", subtitle: "継続のコツや変化をシェア"),
-        .init(icon: "calendar.badge.clock", title: "イベント告知", subtitle: "グループ/キャンペーンの案内"),
-        .init(icon: "sparkles", title: "おすすめ投稿", subtitle: "運動・食事・セルフケア"),
-        .init(icon: "megaphone.fill", title: "スタジオからのお知らせ", subtitle: "休講/更新情報など")
-    ]
-
-    private let feed: [FeedItem] = [
-        .init(
-            title: "1月の営業日について",
-            body: "営業日・休業日の案内をここに表示します（ダミー）。",
-            date: Calendar.current.date(byAdding: .day, value: -2, to: Date()) ?? Date(),
-            typeLabel: "お知らせ",
-            typeIcon: "megaphone.fill"
-        ),
-        .init(
-            title: "おすすめセルフケアを追加しました",
-            body: "動画・記事などのおすすめをここに表示します（ダミー）。",
-            date: Calendar.current.date(byAdding: .day, value: -5, to: Date()) ?? Date(),
-            typeLabel: "おすすめ",
-            typeIcon: "sparkles"
-        ),
-        .init(
-            title: "イベント準備中です",
-            body: "イベント情報をここに表示します（ダミー）。",
-            date: Calendar.current.date(byAdding: .day, value: -10, to: Date()) ?? Date(),
-            typeLabel: "イベント",
-            typeIcon: "calendar.badge.clock"
-        )
+        .init(icon: SNCommunityCategory.share.icon, title: SNCommunityCategory.share.rawValue, subtitle: SNCommunityCategory.share.subtitle, destinationCategory: .share),
+        .init(icon: SNCommunityCategory.event.icon, title: SNCommunityCategory.event.rawValue, subtitle: SNCommunityCategory.event.subtitle, destinationCategory: .event),
+        .init(icon: SNCommunityCategory.recommend.icon, title: SNCommunityCategory.recommend.rawValue, subtitle: SNCommunityCategory.recommend.subtitle, destinationCategory: .recommend),
+        .init(icon: SNCommunityCategory.announcement.icon, title: SNCommunityCategory.announcement.rawValue, subtitle: SNCommunityCategory.announcement.subtitle, destinationCategory: .announcement)
     ]
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
-
                     heroCard
-
                     quickActionsCard
-
-                    feedCard
-
+                    latestCard
                     Spacer(minLength: 12)
                 }
                 .padding(.top, 12)
@@ -72,6 +37,8 @@ struct CommunityView: View {
             .navigationTitle("コミュニティ")
             .navigationBarTitleDisplayMode(.inline)
             .background(Color(.systemGroupedBackground).ignoresSafeArea())
+            .task { await vm.fetch() }
+            .refreshable { await vm.fetch() }
         }
     }
 
@@ -103,6 +70,14 @@ struct CommunityView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(Capsule().fill(Color.black.opacity(0.05)))
+
+            if let msg = vm.errorMessage, !msg.isEmpty {
+                Text(msg)
+                    .font(.footnote)
+                    .foregroundColor(.red)
+                    .multilineTextAlignment(.center)
+                    .padding(.top, 4)
+            }
         }
         .padding(16)
         .frame(maxWidth: .infinity)
@@ -117,7 +92,6 @@ struct CommunityView: View {
     // MARK: - Quick actions
     private var quickActionsCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-
             Text("近日追加予定")
                 .font(.headline)
                 .foregroundColor(Theme.dark)
@@ -125,10 +99,16 @@ struct CommunityView: View {
             VStack(spacing: 10) {
                 ForEach(features) { f in
                     NavigationLink {
-                        CommunityPlaceholderDetailView(
-                            title: f.title,
-                            subtitle: f.subtitle
-                        )
+                        // ✅ カテゴリが設定されている場合：カテゴリ別一覧へ
+                        if let category = f.destinationCategory {
+                            CommunityFeedListView(
+                                category: category,
+                                items: vm.items(for: category)
+                            )
+                        } else {
+                            // 保険：nil の場合は従来のダミー詳細へ
+                            CommunityPlaceholderDetailView(title: f.title, subtitle: f.subtitle)
+                        }
                     } label: {
                         HStack(spacing: 12) {
                             ZStack {
@@ -177,15 +157,15 @@ struct CommunityView: View {
         .padding(.horizontal, 16)
     }
 
-    // MARK: - Feed
-    private var feedCard: some View {
+    // MARK: - Latest
+    private var latestCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-
             HStack {
                 Text("最新")
                     .font(.headline)
                     .foregroundColor(Theme.dark)
                 Spacer()
+
                 Text("ダミー表示")
                     .font(.caption.weight(.semibold))
                     .foregroundColor(.secondary)
@@ -194,14 +174,33 @@ struct CommunityView: View {
                     .background(Capsule().fill(Color.black.opacity(0.05)))
             }
 
-            VStack(spacing: 10) {
-                ForEach(feed) { item in
-                    NavigationLink {
-                        CommunityFeedDetailView(item: item)
-                    } label: {
-                        feedRow(item)
+            if vm.isLoading {
+                HStack(spacing: 10) {
+                    ProgressView()
+                    Text("読み込み中…")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.vertical, 8)
+            } else {
+                let latest = vm.latest(limit: 3)
+
+                if latest.isEmpty {
+                    Text("最新の投稿はまだありません（ダミー）")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .padding(.vertical, 6)
+                } else {
+                    VStack(spacing: 10) {
+                        ForEach(latest) { item in
+                            NavigationLink {
+                                CommunityFeedDetailView(item: item)
+                            } label: {
+                                feedRow(item)
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }
@@ -215,20 +214,20 @@ struct CommunityView: View {
         .padding(.horizontal, 16)
     }
 
-    private func feedRow(_ item: FeedItem) -> some View {
+    private func feedRow(_ item: SNCommunityFeedItem) -> some View {
         HStack(alignment: .top, spacing: 12) {
             ZStack {
                 Circle()
                     .fill(Theme.sub.opacity(0.15))
                     .frame(width: 36, height: 36)
-                Image(systemName: item.typeIcon)
+                Image(systemName: item.category.icon)
                     .font(.system(size: 16, weight: .bold))
                     .foregroundColor(Theme.sub)
             }
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
-                    Text(item.typeLabel)
+                    Text(item.category.rawValue)
                         .font(.caption.weight(.semibold))
                         .foregroundColor(.secondary)
                         .padding(.horizontal, 8)
@@ -237,7 +236,7 @@ struct CommunityView: View {
 
                     Spacer()
 
-                    Text(formatDate(item.date))
+                    Text(SNCommunityDateFormat.compact(item.date))
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -263,16 +262,9 @@ struct CommunityView: View {
                 .fill(Color(.secondarySystemBackground))
         )
     }
-
-    private func formatDate(_ date: Date) -> String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "ja_JP")
-        f.dateFormat = "yyyy/M/d"
-        return f.string(from: date)
-    }
 }
 
-// MARK: - Placeholder Detail（近日追加予定の各入口）
+// MARK: - Placeholder Detail
 private struct CommunityPlaceholderDetailView: View {
     let title: String
     let subtitle: String
@@ -305,62 +297,6 @@ private struct CommunityPlaceholderDetailView: View {
         }
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
-    }
-}
-
-// MARK: - Feed Detail（最新の詳細）
-private struct CommunityFeedDetailView: View {
-    let item: CommunityView.FeedItem
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-
-                HStack(spacing: 10) {
-                    Image(systemName: item.typeIcon)
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(Theme.sub)
-
-                    Text(item.typeLabel)
-                        .font(.caption.weight(.semibold))
-                        .foregroundColor(.secondary)
-
-                    Spacer()
-
-                    Text(formatDate(item.date))
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-
-                Text(item.title)
-                    .font(.title3.bold())
-                    .foregroundColor(Theme.dark)
-
-                Text(item.body)
-                    .font(.body)
-                    .foregroundColor(.secondary)
-                    .lineSpacing(4)
-
-                Divider().padding(.top, 8)
-
-                Text("※この画面はダミーです。後ほど投稿・お知らせ機能に差し替えます。")
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
-
-                Spacer(minLength: 24)
-            }
-            .padding(16)
-        }
-        .background(Color(.systemGroupedBackground).ignoresSafeArea())
-        .navigationTitle("詳細")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-
-    private func formatDate(_ date: Date) -> String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "ja_JP")
-        f.dateFormat = "yyyy年M月d日"
-        return f.string(from: date)
     }
 }
 

@@ -1,5 +1,3 @@
-// WeightManager.swift
-
 import SwiftUI
 import FirebaseFirestore
 import FirebaseAuth
@@ -20,10 +18,23 @@ struct WeightRecord: Identifiable, Equatable {
 
 @MainActor
 final class WeightManager: ObservableObject {
+
+    // MARK: - Published
     @Published var weights: [WeightRecord] = []
     @Published var goalWeight: Double = 55.0
     @Published var height: Double = 1.65
 
+    /// ✅ 無料制限に引っかかった等、UI側に通知したい文言
+    @Published var gateMessage: String? = nil
+
+    // MARK: - Subscription (injected)
+    private(set) var subscriptionState: SubscriptionState = .free
+
+    func setSubscriptionState(_ state: SubscriptionState) {
+        self.subscriptionState = state
+    }
+
+    // MARK: - Firestore
     private let db = Firestore.firestore()
 
     // MARK: - Load
@@ -77,6 +88,17 @@ final class WeightManager: ObservableObject {
         isMenstruation: Bool = false,
         recordedAt: Date = Date()
     ) async {
+
+        // ✅ 無料：1日1回まで（同日に既に記録があればブロック）
+        if !subscriptionState.isPremium {
+            let count = records(on: date).count
+            if !SNUsageLimit.canAddWeightRecordFree(existingCountForDay: count) {
+                gateMessage = "無料会員は1日1回まで記録できます（毎日0時にリセット）。"
+                print("⛔️ blocked: free daily limit (count=\(count))")
+                return
+            }
+        }
+
         guard let uid = Auth.auth().currentUser?.uid else { return }
 
         do {

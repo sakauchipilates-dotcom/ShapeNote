@@ -5,6 +5,7 @@ import ShapeCore
 import Combine
 
 struct MyPageView: View {
+
     @EnvironmentObject var appState: CustomerAppState
     @EnvironmentObject var imageVM: ProfileImageVM
     private let auth = AuthHandler.shared
@@ -12,21 +13,31 @@ struct MyPageView: View {
     @State private var availableCouponCount: Int = 0
     @State private var isLoadingCoupons: Bool = true
 
+    @State private var showGateAlert: Bool = false
+    @State private var gateMessage: String = ""
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 18) {
 
-                    // 🪪 会員カード
                     MembershipCardView()
                         .environmentObject(imageVM)
                         .padding(.horizontal, 16)
 
-                    // 🟩 クーポン枠（会員カードの下）
-                    couponQuickCard
+                    // ✅ クーポン：Premiumのみ
+                    if appState.subscriptionState.isPremium {
+                        couponQuickCard
+                            .padding(.horizontal, 16)
+                    } else {
+                        lockedQuickCard(
+                            title: "クーポン",
+                            subtitle: "プレミアム会員で利用できます",
+                            systemImage: "ticket.fill"
+                        )
                         .padding(.horizontal, 16)
+                    }
 
-                    // 📋 メニュー
                     menuSection
                 }
                 .padding(.top, 16)
@@ -41,12 +52,25 @@ struct MyPageView: View {
                 )
             }
             .task {
+                // ✅ 無料はクーポン取得をしない（Firestoreコスト削減 & 不要アクセス防止）
+                guard appState.subscriptionState.isPremium else {
+                    await MainActor.run {
+                        availableCouponCount = 0
+                        isLoadingCoupons = false
+                    }
+                    return
+                }
                 await fetchAvailableCouponCount()
+            }
+            .alert("プレミアム限定", isPresented: $showGateAlert) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(gateMessage)
             }
         }
     }
 
-    // MARK: - クーポン枠（大きく押しやすい）
+    // MARK: - クーポン枠（Premium）
     private var couponQuickCard: some View {
         NavigationLink(destination: CouponListView()) {
             ZStack {
@@ -94,6 +118,55 @@ struct MyPageView: View {
         .accessibilityLabel("クーポン一覧へ")
     }
 
+    private func lockedQuickCard(title: String, subtitle: String, systemImage: String) -> some View {
+        Button {
+            gateMessage = "この機能はプレミアム会員（月額440円）で利用できます。"
+            showGateAlert = true
+        } label: {
+            ZStack {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Color(.systemBackground))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(Color.black.opacity(0.06), lineWidth: 1)
+                    )
+                    .shadow(color: Theme.dark.opacity(0.06), radius: 10, y: 6)
+
+                HStack(spacing: 14) {
+                    ZStack {
+                        Circle()
+                            .fill(Theme.sub.opacity(0.12))
+                            .frame(width: 46, height: 46)
+
+                        Image(systemName: systemImage)
+                            .font(.system(size: 22, weight: .bold))
+                            .foregroundColor(Theme.sub.opacity(0.85))
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(title)
+                            .font(.headline.weight(.semibold))
+                            .foregroundColor(Theme.dark)
+
+                        Text(subtitle)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.secondary.opacity(0.8))
+                }
+                .padding(16)
+            }
+            .frame(height: 86)
+            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
     private var couponGradient: LinearGradient {
         LinearGradient(
             colors: [
@@ -105,12 +178,7 @@ struct MyPageView: View {
         )
     }
 
-    // MARK: - メニュー（指定順）
-    // ・会員情報
-    // ・来店履歴
-    // ・お問い合わせ（←ここに「チャット」も集約）
-    // ・バージョン情報
-    // ・ログアウト
+    // MARK: - メニュー
     private var menuSection: some View {
         VStack(spacing: 0) {
 
@@ -121,14 +189,31 @@ struct MyPageView: View {
             }
             Divider()
 
-            NavigationLink(destination: VisitHistoryView()) {
-                Label("来店履歴", systemImage: "clock")
+            // ✅ 来店履歴：Premiumのみ
+            if appState.subscriptionState.isPremium {
+                NavigationLink(destination: VisitHistoryView()) {
+                    Label("来店履歴", systemImage: "clock")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding()
+                }
+            } else {
+                Button {
+                    gateMessage = "来店履歴はプレミアム会員（月額440円）で利用できます。"
+                    showGateAlert = true
+                } label: {
+                    HStack {
+                        Label("来店履歴", systemImage: "clock")
+                        Spacer()
+                        Image(systemName: "lock.fill")
+                            .foregroundColor(.secondary.opacity(0.8))
+                    }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding()
+                }
+                .buttonStyle(.plain)
             }
             Divider()
 
-            // ✅ 旧：InfoContactView 直行 → 新：お問い合わせハブ（お問い合わせ + 管理者チャット）
             NavigationLink(destination: InquiryHubView()) {
                 Label("お問い合わせ", systemImage: "envelope")
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -160,7 +245,7 @@ struct MyPageView: View {
         .padding(.top, 6)
     }
 
-    // MARK: - Firestore：利用可能クーポン数
+    // MARK: - Firestore：利用可能クーポン数（Premiumのみ呼ばれる）
     private func fetchAvailableCouponCount() async {
         guard let uid = Auth.auth().currentUser?.uid else {
             await MainActor.run {
