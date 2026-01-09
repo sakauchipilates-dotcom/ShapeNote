@@ -1,90 +1,147 @@
 import SwiftUI
-import FirebaseAuth
 import ShapeCore
+import FirebaseAuth
 
 struct CustomerLoginView: View {
-    @State private var email = ""
-    @State private var password = ""
-    @State private var isPasswordVisible = false
-    @State private var message = ""
-    @State private var isLoggingIn = false
-    @State private var isShowingRegister = false
-    
-    @EnvironmentObject var appState: CustomerAppState
-    private let auth = AuthHandler.shared
+
+    @EnvironmentObject private var appState: CustomerAppState
+
+    @State private var email: String = ""
+    @State private var password: String = ""
+    @State private var isProcessing: Bool = false
+    @State private var errorMessage: String?
+
+    // ✅ 登録画面を表示
+    @State private var isShowingRegister: Bool = false
 
     var body: some View {
-        NavigationView {
-            VStack(spacing: 24) {
-                Text("会員ログイン")
-                    .font(.title3.bold())
+        ZStack {
+            Theme.gradientMain.ignoresSafeArea()
+
+            VStack {
+                Spacer(minLength: 0)
+
+                loginCard
+                    .frame(maxWidth: 460)
+                    .padding(.horizontal, 24)
+
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    private var loginCard: some View {
+        VStack(spacing: 16) {
+
+            Text("会員ログイン")
+                .font(.title3.weight(.semibold))
+                .foregroundColor(Theme.semanticColor.text.opacity(0.9))
+                .padding(.top, 6)
+
+            VStack(spacing: 12) {
 
                 TextField("メールアドレスを入力", text: $email)
-                    .textFieldStyle(.roundedBorder)
+                    .textInputAutocapitalization(.never)
                     .keyboardType(.emailAddress)
-                    .autocapitalization(.none)
-                    .padding(.horizontal)
+                    .autocorrectionDisabled()
+                    .padding(.vertical, 12)
+                    .padding(.horizontal, 12)
+                    .background(Color.white.opacity(0.75), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(Color.black.opacity(0.06), lineWidth: 1)
+                    )
 
-                HStack {
-                    if isPasswordVisible {
-                        TextField("パスワードを入力", text: $password)
-                            .textFieldStyle(.roundedBorder)
-                    } else {
-                        SecureField("パスワードを入力", text: $password)
-                            .textFieldStyle(.roundedBorder)
-                    }
-                    Button {
-                        isPasswordVisible.toggle()
-                    } label: {
-                        Image(systemName: isPasswordVisible ? "eye.slash.fill" : "eye.fill")
-                            .foregroundColor(.gray)
-                    }
-                }
-                .padding(.horizontal)
+                SecureField("パスワードを入力", text: $password)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .padding(.vertical, 12)
+                    .padding(.horizontal, 12)
+                    .background(Color.white.opacity(0.75), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(Color.black.opacity(0.06), lineWidth: 1)
+                    )
 
-                if isLoggingIn {
-                    ProgressView("ログイン中…")
-                } else {
-                    Button("ログイン") {
-                        login()
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
-
-                if !message.isEmpty {
-                    Text(message)
-                        .foregroundColor(.gray)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
+                if let errorMessage {
+                    Text(errorMessage)
+                        .font(.footnote)
+                        .foregroundColor(Theme.semanticColor.warning)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, 2)
                 }
 
-                Divider().padding(.top, 16)
+                Button {
+                    Task { await login() }
+                } label: {
+                    HStack(spacing: 10) {
+                        if isProcessing {
+                            ProgressView().scaleEffect(0.9)
+                        }
+                        Text(isProcessing ? "ログイン中..." : "ログイン")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .foregroundColor(.white)
+                    .padding(.vertical, 14)
+                    .frame(maxWidth: .infinity)
+                    .background(
+                        Theme.sub.opacity(canLogin ? 1.0 : 0.55),
+                        in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(!canLogin || isProcessing)
 
-                // 🔹 新規登録ボタンを追加
-                Button("アカウントをお持ちでない方はこちら") {
+                Button {
                     isShowingRegister = true
+                } label: {
+                    Text("アカウントをお持ちでない方はこちら")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundColor(Theme.sub.opacity(0.95))
+                        .padding(.vertical, 10)
+                        .frame(maxWidth: .infinity)
+                        .background(Color.white.opacity(0.40), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
-                .foregroundColor(.blue)
+                .buttonStyle(.plain)
+                .padding(.top, 2)
                 .sheet(isPresented: $isShowingRegister) {
                     CustomerRegisterView()
                         .environmentObject(appState)
                 }
             }
-            .padding()
         }
+        .padding(18)
+        .background(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(Theme.semanticColor.card)
+                .shadow(color: Theme.dark.opacity(0.12), radius: 14, y: 8)
+        )
     }
 
-    private func login() {
-        isLoggingIn = true
-        auth.signIn(email: email, password: password) { result in
-            isLoggingIn = false
-            switch result {
-            case .success:
-                message = "✅ ログイン成功！"
-                appState.setLoggedIn(true)
-            case .failure(let error):
-                message = "❌ ログイン失敗: \(error.localizedDescription)"
-            }
+    private var canLogin: Bool {
+        !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        && !password.isEmpty
+    }
+
+    @MainActor
+    private func login() async {
+        guard canLogin else { return }
+        errorMessage = nil
+        isProcessing = true
+        defer { isProcessing = false }
+
+        do {
+            let result = try await Auth.auth().signIn(withEmail: email, password: password)
+            print("✅ login success: \(result.user.uid)")
+
+            // ✅ 入力クリア（任意）
+            email = ""
+            password = ""
+
+            appState.setLoggedIn(true)
+        } catch {
+            errorMessage = "ログインに失敗しました。メールアドレス・パスワードをご確認ください。"
+            print("⚠️ login error: \(error.localizedDescription)")
         }
     }
 }

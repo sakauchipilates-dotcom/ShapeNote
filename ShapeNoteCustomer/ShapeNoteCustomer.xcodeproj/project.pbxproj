@@ -76,6 +76,7 @@
 		6DA8DABF2EBB439E00DACEED /* ShapeNoteCustomerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DA8DABB2EBB439E00DACEED /* ShapeNoteCustomerApp.swift */; };
 		6DA8DAC52EBB459900DACEED /* CouponListVM.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DA8DAC42EBB459900DACEED /* CouponListVM.swift */; };
 		6DA8DAC72EBB45AA00DACEED /* CouponListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DA8DAC62EBB45AA00DACEED /* CouponListView.swift */; };
+		6DBD96C82F1005B7008AA187 /* DeletionRequestGuardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DBD96C72F1005B7008AA187 /* DeletionRequestGuardView.swift */; };
 		6DCAB49A2EB8FEA200E7B0D8 /* ExerciseViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DCAB4992EB8FEA200E7B0D8 /* ExerciseViewModel.swift */; };
 		6DCAB49C2EB9071500E7B0D8 /* CollapsibleSectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DCAB49B2EB9071500E7B0D8 /* CollapsibleSectionView.swift */; };
 		6DCAB4AE2EB989A000E7B0D8 /* CollapsibleYouTubeSectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DCAB4AD2EB989A000E7B0D8 /* CollapsibleYouTubeSectionView.swift */; };
@@ -177,6 +178,7 @@
 		6DA8DABB2EBB439E00DACEED /* ShapeNoteCustomerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShapeNoteCustomerApp.swift; sourceTree = "<group>"; };
 		6DA8DAC42EBB459900DACEED /* CouponListVM.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CouponListVM.swift; sourceTree = "<group>"; };
 		6DA8DAC62EBB45AA00DACEED /* CouponListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CouponListView.swift; sourceTree = "<group>"; };
+		6DBD96C72F1005B7008AA187 /* DeletionRequestGuardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeletionRequestGuardView.swift; sourceTree = "<group>"; };
 		6DCAB4992EB8FEA200E7B0D8 /* ExerciseViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseViewModel.swift; sourceTree = "<group>"; };
 		6DCAB49B2EB9071500E7B0D8 /* CollapsibleSectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollapsibleSectionView.swift; sourceTree = "<group>"; };
 		6DCAB4AD2EB989A000E7B0D8 /* CollapsibleYouTubeSectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollapsibleYouTubeSectionView.swift; sourceTree = "<group>"; };
@@ -442,6 +444,14 @@
 			path = Root;
 			sourceTree = "<group>";
 		};
+		6DBD96C62F100588008AA187 /* Deletion */ = {
+			isa = PBXGroup;
+			children = (
+				6DBD96C72F1005B7008AA187 /* DeletionRequestGuardView.swift */,
+			);
+			path = Deletion;
+			sourceTree = "<group>";
+		};
 		6DE9AD592F07D50D00310C04 /* Repositories */ = {
 			isa = PBXGroup;
 			children = (
@@ -462,6 +472,7 @@
 		6DF01B3E2EB446E700B0CC1B /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				6DBD96C62F100588008AA187 /* Deletion */,
 				6DE9AD602F08163000310C04 /* Common */,
 				6D8D8E552F05EF7100AC15D6 /* Community */,
 				6DA8DACF2EBB4C6200DACEED /* Root */,
@@ -642,6 +653,7 @@
 				6DE9AD502F079E7000310C04 /* CommunityVM.swift in Sources */,
 				6D930BE52EF80C6F00051AFC /* PostureMultiResultHubView.swift in Sources */,
 				6D87638F2EC77B5300BD89CA /* CircleCountdown.swift in Sources */,
+				6DBD96C82F1005B7008AA187 /* DeletionRequestGuardView.swift in Sources */,
 				6DA8DAC72EBB45AA00DACEED /* CouponListView.swift in Sources */,
 				6DA8DABF2EBB439E00DACEED /* ShapeNoteCustomerApp.swift in Sources */,
 				6D7D65FF2EC1E7E0003D1943 /* VisitHistoryItem.swift in Sources */,

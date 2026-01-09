@@ -4,7 +4,7 @@ import ShapeCore
 struct LegalConsentView: View {
 
     let onAgree: () -> Void
-    let onLogout: (() -> Void)? = nil   // 必要ならログアウトボタン用（任意）
+    let onLogout: (() -> Void)? = nil
 
     private enum SheetKind: Identifiable {
         case terms
@@ -26,6 +26,9 @@ struct LegalConsentView: View {
 
     @State private var termsAgreed: Bool = false
     @State private var privacyAgreed: Bool = false
+
+    // ✅ 連打防止＆処理中表示
+    @State private var isSubmitting: Bool = false
 
     var body: some View {
         ZStack {
@@ -63,6 +66,12 @@ struct LegalConsentView: View {
                 Spacer().frame(height: 18)
             }
             .padding(.horizontal, 18)
+
+            // ✅ 画面最前面で “今タップできてるか” 見るオーバーレイ（必要ならONに）
+            // Color.clear.contentShape(Rectangle()).onTapGesture { print("🧾 [LegalConsentView] tapped on background") }
+        }
+        .onAppear {
+            print("🧾 [LegalConsentView] appeared")
         }
         .sheet(item: $activeSheet) { kind in
             LegalDocumentSheet(
@@ -82,7 +91,6 @@ struct LegalConsentView: View {
     private var contentCard: some View {
         VStack(alignment: .leading, spacing: 12) {
 
-            // 利用規約
             headerRow(
                 systemImage: "doc.text",
                 title: "利用規約（アプリ内表示）",
@@ -105,7 +113,6 @@ struct LegalConsentView: View {
 
             Divider().opacity(0.35)
 
-            // プライバシー
             headerRow(
                 systemImage: "hand.raised.fill",
                 title: "プライバシーポリシー（アプリ内表示）",
@@ -147,16 +154,49 @@ struct LegalConsentView: View {
     }
 
     private var agreeArea: some View {
-        VStack(spacing: 12) {
-            GlassButton(
-                title: "同意して続行",
-                systemImage: "checkmark.circle.fill",
-                background: Theme.sub
-            ) {
+        let canProceed = (termsAgreed && privacyAgreed)
+
+        return VStack(spacing: 12) {
+            Button {
+                print("✅ [LegalConsentView] '同意して続行' tapped. canProceed=\(canProceed) submitting=\(isSubmitting)")
+                guard canProceed else {
+                    print("⚠️ [LegalConsentView] blocked: termsAgreed=\(termsAgreed) privacyAgreed=\(privacyAgreed)")
+                    return
+                }
+                guard !isSubmitting else { return }
+
+                // ✅ 連打防止
+                isSubmitting = true
+
+                // ✅ sheetが開いていたら閉じる（iPadで“何かが上に居て遷移しない”を潰す）
+                activeSheet = nil
+
+                // ✅ UIはここで即通す（CustomerRootView側で optimistic unlock）
                 onAgree()
+
+                // 念のため、短いクールダウン
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                    isSubmitting = false
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    if isSubmitting {
+                        ProgressView()
+                            .tint(.white)
+                    } else {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 18, weight: .semibold))
+                    }
+                    Text(isSubmitting ? "処理中…" : "同意して続行")
+                        .font(.subheadline.weight(.semibold))
+                }
+                .foregroundColor(.white)
+                .padding(.vertical, 14)
+                .frame(maxWidth: .infinity)
+                .background(Theme.sub.opacity(canProceed ? 1.0 : 0.55), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
-            .disabled(!(termsAgreed && privacyAgreed))
-            .opacity((termsAgreed && privacyAgreed) ? 1.0 : 0.55)
+            .buttonStyle(.plain)
+            .disabled(!canProceed)
 
             Text("※それぞれの本文を確認後、同意をONにしてください。")
                 .font(.caption)
@@ -237,7 +277,6 @@ private struct LegalDocumentSheet: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(16)
 
-                    // 最下部到達検知
                     GeometryReader { _ in
                         Color.clear
                             .frame(height: 1)

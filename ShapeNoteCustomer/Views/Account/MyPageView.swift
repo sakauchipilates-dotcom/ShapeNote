@@ -228,9 +228,9 @@ struct MyPageView: View {
             }
             Divider()
 
+            // ✅ ログアウト
             Button {
-                auth.signOut()
-                appState.setLoggedIn(false)
+                Task { await appState.forceLogout() }
             } label: {
                 Label("ログアウト", systemImage: "rectangle.portrait.and.arrow.right")
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -308,13 +308,5 @@ struct MyPageView: View {
                 isLoadingCoupons = false
             }
         }
-    }
-}
-
-#Preview {
-    NavigationStack {
-        MyPageView()
-            .environmentObject(CustomerAppState())
-            .environmentObject(ProfileImageVM())
     }
 }
