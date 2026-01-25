@@ -1,4 +1,5 @@
 import SwiftUI
+import StoreKit
 import FirebaseAuth
 import FirebaseFirestore
 import ShapeCore
@@ -6,6 +7,7 @@ import ShapeCore
 struct MemberInfoView: View {
 
     @EnvironmentObject var vm: ProfileImageVM
+    @EnvironmentObject var appState: CustomerAppState
 
     @State private var showPassword = false
     @State private var displayId: String = "—"
@@ -17,11 +19,26 @@ struct MemberInfoView: View {
     @State private var alertMessage = ""
     @State private var showAlert = false
 
-    // 退会（アカウント削除申請）
+    // アカウント削除
     @State private var showDeleteConfirm = false
-    @State private var isSendingDeletionRequest = false
+    @State private var isDeletingAccount = false
+
+    // 再認証が必要な場合の入力
+    @State private var showReauthSheet = false
+    @State private var reauthPasswordInput = ""
+    @State private var reauthError: String? = nil
+
+    // ✅ 購入導線（見える化）
+    @State private var goToSubscription = false
+
+    // ✅ StoreKit 2 購入窓口
+    @StateObject private var subscriptionStore = SubscriptionStore()
 
     private let db = Firestore.firestore()
+
+    private var isPremiumNow: Bool {
+        appState.subscriptionState.isPremium(now: Date())
+    }
 
     var body: some View {
         ZStack {
@@ -31,17 +48,18 @@ struct MemberInfoView: View {
             ScrollView {
                 VStack(spacing: 14) {
 
-                    // ---- 基本情報カード ----
-                    infoCard
+                    // ✅ 最重要：購入導線は「最上段」に固定
+                    upgradeEntryCard
                         .padding(.horizontal, 16)
                         .padding(.top, 10)
 
-                    // ---- アクションカード（ボタンだけ）----
+                    infoCard
+                        .padding(.horizontal, 16)
+
                     actionCard
                         .padding(.horizontal, 16)
 
-                    // ✅ 説明文はカードの外に出す（重なり防止）
-                    Text("退会申請後はログインできなくなります。")
+                    Text("アカウント削除はアプリ内で完了します（削除後は復元できません）。")
                         .font(.footnote)
                         .foregroundColor(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -55,7 +73,7 @@ struct MemberInfoView: View {
         }
         .navigationTitle("会員情報")
         .navigationBarTitleDisplayMode(.inline)
-        .disabled(isProcessing || isSendingDeletionRequest)
+        .disabled(isProcessing || isDeletingAccount)
         .task {
             await vm.loadProfile()
             await fetchDisplayId()
@@ -67,14 +85,95 @@ struct MemberInfoView: View {
         } message: {
             Text(alertMessage)
         }
-        .alert("退会しますか？", isPresented: $showDeleteConfirm) {
+        .alert("アカウントを削除しますか？", isPresented: $showDeleteConfirm) {
             Button("キャンセル", role: .cancel) { }
-            Button("退会する", role: .destructive) {
-                Task { await submitDeletionRequest() }
+            Button("削除する", role: .destructive) {
+                Task { await startDeleteFlow() }
             }
         } message: {
-            Text("退会申請を送信します。送信後はログインできなくなります。")
+            Text("アカウントと関連データを削除します。削除後はログインできません。")
         }
+        .sheet(isPresented: $showReauthSheet) {
+            reauthSheet
+                .presentationDetents([.medium])
+        }
+        .navigationDestination(isPresented: $goToSubscription) {
+            SubscriptionInfoView()
+        }
+    }
+
+    // MARK: - ✅ 購入導線（最上段固定）
+
+    private var upgradeEntryCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: "crown.fill")
+                    .foregroundColor(Theme.sub)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("プレミアム会員")
+                        .font(.headline.weight(.semibold))
+                        .foregroundColor(Theme.dark)
+
+                    // ✅ 価格・周期は必ず明記
+                    Text("月額440円")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                if isPremiumNow {
+                    Text("加入中")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundColor(.secondary)
+                } else {
+                    Image(systemName: "chevron.right")
+                        .foregroundColor(.secondary.opacity(0.8))
+                }
+            }
+
+            // ✅ 解約場所（設定→サブスクリプション）を必ず明記
+            Text("解約はいつでも「設定」→「サブスクリプション」から行えます。")
+                .font(.footnote)
+                .foregroundColor(.secondary)
+
+            if !isPremiumNow {
+                Button {
+                    Task {
+                        await handleUpgradeTapped()
+                    }
+                } label: {
+                    HStack {
+                        Text("アップグレードする")
+                            .font(.subheadline.weight(.semibold))
+                        Spacer()
+                        if subscriptionStore.isPurchasing {
+                            ProgressView()
+                                .scaleEffect(0.9)
+                        } else {
+                            Image(systemName: "cart.fill")
+                        }
+                    }
+                    .foregroundColor(.white)
+                    .padding(.vertical, 12)
+                    .padding(.horizontal, 14)
+                    .background(
+                        Theme.sub,
+                        in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    )
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 4)
+                .accessibilityLabel("アップグレードする")
+            }
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color.white.opacity(0.88))
+                .shadow(color: Theme.dark.opacity(0.08), radius: 14, y: 8)
+        )
     }
 
     // MARK: - UI
@@ -120,7 +219,6 @@ struct MemberInfoView: View {
         )
     }
 
-    /// ✅ ボタンカードは「ボタン＋divider」のみ（固定高さにしない）
     private var actionCard: some View {
         VStack(spacing: 0) {
 
@@ -152,9 +250,9 @@ struct MemberInfoView: View {
             } label: {
                 HStack(spacing: 12) {
                     Image(systemName: "person.fill.xmark")
-                    Text(isSendingDeletionRequest ? "退会申請を送信中..." : "退会する（アカウント削除申請）")
+                    Text(isDeletingAccount ? "削除中..." : "アカウントを削除する（退会）")
                     Spacer()
-                    if isSendingDeletionRequest {
+                    if isDeletingAccount {
                         ProgressView().scaleEffect(0.9)
                     }
                 }
@@ -163,7 +261,7 @@ struct MemberInfoView: View {
                 .padding(.horizontal, 16)
             }
             .buttonStyle(.plain)
-            .disabled(isSendingDeletionRequest)
+            .disabled(isDeletingAccount)
         }
         .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -216,6 +314,50 @@ struct MemberInfoView: View {
             .padding(.leading, 8)
         }
         .padding(.vertical, 14)
+    }
+
+    private var reauthSheet: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("再認証が必要です")
+                .font(.headline)
+
+            Text("安全のため、アカウント削除前にパスワードの再入力が必要です。")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+
+            SecureField("パスワード", text: $reauthPasswordInput)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .padding(.vertical, 12)
+                .padding(.horizontal, 12)
+                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            if let reauthError {
+                Text(reauthError)
+                    .font(.footnote)
+                    .foregroundColor(.red)
+            }
+
+            HStack(spacing: 12) {
+                Button("キャンセル", role: .cancel) {
+                    reauthPasswordInput = ""
+                    reauthError = nil
+                    showReauthSheet = false
+                }
+
+                Spacer()
+
+                Button {
+                    Task { await confirmDeleteWithPassword() }
+                } label: {
+                    Text(isDeletingAccount ? "削除中..." : "削除を実行")
+                        .font(.subheadline.weight(.semibold))
+                }
+                .disabled(reauthPasswordInput.isEmpty || isDeletingAccount)
+            }
+            .padding(.top, 4)
+        }
+        .padding(20)
     }
 
     // MARK: - Logic
@@ -292,42 +434,135 @@ struct MemberInfoView: View {
         showAlert = true
     }
 
-    /// A案：削除「申請」だけ送って、アプリ側はログアウト（以後ログイン不可は AppState 側ガードで固定）
-    @MainActor
-    private func submitDeletionRequest() async {
-        guard !isSendingDeletionRequest else { return }
-        guard let user = Auth.auth().currentUser else {
-            alertTitle = "エラー"
-            alertMessage = "ログイン情報が取得できません。再ログインしてください。"
-            showAlert = true
-            return
-        }
+    // MARK: - Purchase
 
-        isSendingDeletionRequest = true
-        defer { isSendingDeletionRequest = false }
+    @MainActor
+    private func handleUpgradeTapped() async {
+        guard !isPremiumNow else { return }
+
+        isProcessing = true
+        defer { isProcessing = false }
 
         do {
-            // 申請先は運用に合わせて変更可
-            try await db.collection("accountDeletionRequests").document(user.uid).setData([
-                "uid": user.uid,
-                "email": user.email ?? "",
-                "status": "requested",
-                "createdAt": FieldValue.serverTimestamp()
-            ], merge: true)
+            try await subscriptionStore.purchasePremium()
 
-            // 申請後はログアウト
-            try Auth.auth().signOut()
+            alertTitle = "アップグレード完了"
+            alertMessage = "プレミアム会員へのご登録ありがとうございます。\nこのままプレミアム機能をご利用いただけます。"
+            showAlert = true
 
-            alertTitle = "送信しました"
-            alertMessage = "退会申請を受け付けました。"
+        } catch let storeError as SubscriptionStore.StoreError {
+            // ユーザーキャンセルは静かに無視
+            if case .userCancelled = storeError {
+                return
+            }
+            alertTitle = "購入エラー"
+            alertMessage = storeError.localizedDescription
             showAlert = true
 
         } catch {
-            alertTitle = "エラー"
-            alertMessage = "退会申請の送信に失敗しました。通信環境をご確認のうえ、再度お試しください。"
+            alertTitle = "購入エラー"
+            alertMessage = error.localizedDescription
             showAlert = true
-            print("❌ deletion request error: \(error.localizedDescription)")
         }
+    }
+
+    // MARK: - Delete Account
+
+    @MainActor
+    private func startDeleteFlow() async {
+        guard !isDeletingAccount else { return }
+        reauthError = nil
+
+        let candidatePassword: String? = (password == "********") ? nil : password
+
+        isDeletingAccount = true
+        defer { isDeletingAccount = false }
+
+        do {
+            try await appState.deleteAccountNow(passwordForReauth: candidatePassword)
+            alertTitle = "削除完了"
+            alertMessage = "アカウントを削除しました。ご利用ありがとうございました。"
+            showAlert = true
+        } catch {
+            // 再認証要求なら入力を促す
+            if error.localizedDescription.contains("再ログイン") || error.localizedDescription.contains("パスワード") {
+                showReauthSheet = true
+            } else {
+                alertTitle = "エラー"
+                alertMessage = error.localizedDescription
+                showAlert = true
+            }
+        }
+    }
+
+    @MainActor
+    private func confirmDeleteWithPassword() async {
+        guard !isDeletingAccount else { return }
+        guard !reauthPasswordInput.isEmpty else { return }
+
+        isDeletingAccount = true
+        defer { isDeletingAccount = false }
+
+        do {
+            try await appState.deleteAccountNow(passwordForReauth: reauthPasswordInput)
+            showReauthSheet = false
+            reauthPasswordInput = ""
+            reauthError = nil
+
+            alertTitle = "削除完了"
+            alertMessage = "アカウントを削除しました。ご利用ありがとうございました。"
+            showAlert = true
+        } catch {
+            reauthError = error.localizedDescription
+        }
+    }
+}
+
+// MARK: - ✅ 購入導線 “案内画面”（説明用）
+
+private struct SubscriptionInfoView: View {
+
+    var body: some View {
+        ZStack {
+            Theme.gradientMain.ignoresSafeArea()
+
+            VStack(spacing: 14) {
+                Spacer(minLength: 0)
+
+                Image(systemName: "crown.fill")
+                    .font(.system(size: 44, weight: .bold))
+                    .foregroundColor(Theme.sub)
+
+                Text("プレミアム会員（月額440円）")
+                    .font(.title3.weight(.semibold))
+                    .foregroundColor(Theme.dark.opacity(0.9))
+
+                VStack(spacing: 8) {
+                    Text("プレミアム会員で利用できる機能")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(Theme.dark.opacity(0.85))
+
+                    Text("・クーポン\n・来店履歴\n・その他プレミアム限定機能")
+                        .font(.subheadline)
+                        .foregroundColor(Theme.dark.opacity(0.75))
+                        .multilineTextAlignment(.leading)
+                        .padding(.horizontal, 22)
+                }
+                .padding(.top, 4)
+
+                Text("解約はいつでも「設定」→「サブスクリプション」から行えます。")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+                    .padding(.top, 6)
+
+                Spacer(minLength: 0)
+            }
+            .padding(.vertical, 24)
+        }
+        .navigationTitle("プレミアム")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
@@ -335,5 +570,6 @@ struct MemberInfoView: View {
     NavigationStack {
         MemberInfoView()
             .environmentObject(ProfileImageVM())
+            .environmentObject(CustomerAppState())
     }
 }

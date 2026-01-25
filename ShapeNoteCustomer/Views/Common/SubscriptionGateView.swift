@@ -1,9 +1,7 @@
 import SwiftUI
 import ShapeCore
 
-/// Premium限定機能の共通ゲート
-/// - adminGrant / apple どちらでも、最終的に CustomerAppState.subscriptionState が premium 判定になれば通過
-/// - 画面表示中に premium -> free に落ちても、このViewが即ブロック表示へ切り替わる
+/// Premium限定機能の共通ゲート（1定義のみ / redeclaration回避）
 struct SubscriptionGateView<Content: View>: View {
 
     @EnvironmentObject private var appState: CustomerAppState
@@ -16,6 +14,9 @@ struct SubscriptionGateView<Content: View>: View {
     private let onClose: (() -> Void)?
     private let onSubscribe: (() -> Void)?
     private let content: () -> Content
+
+    // ✅ 追加：購入導線へ遷移（会員情報など）
+    @State private var goToMemberInfo: Bool = false
 
     init(
         featureName: String,
@@ -36,7 +37,6 @@ struct SubscriptionGateView<Content: View>: View {
     }
 
     private var isPremiumNow: Bool {
-        // ✅ “now” を明示して Missing argument を確実に回避
         appState.subscriptionState.isPremium(now: Date())
     }
 
@@ -48,11 +48,14 @@ struct SubscriptionGateView<Content: View>: View {
                 gateBody
             }
         }
-        // 画面表示中に subscriptionState が変わったら即反映
         .animation(.easeInOut(duration: 0.2), value: appState.subscriptionState.tier)
         .animation(.easeInOut(duration: 0.2), value: appState.subscriptionState.expiresAt)
-        // モーダルで “戻れない” ガードにしたい場合に使う
         .interactiveDismissDisabled(!allowDismiss && !isPremiumNow)
+        .navigationDestination(isPresented: $goToMemberInfo) {
+            // ✅ ここを “実際の購入画面” に差し替えてもOK
+            MemberInfoView()
+        }
+        .navigationBarBackButtonHidden(true)
     }
 
     // MARK: - Gate UI
@@ -71,13 +74,12 @@ struct SubscriptionGateView<Content: View>: View {
                     .font(.title3.weight(.semibold))
                     .foregroundColor(Theme.dark.opacity(0.88))
 
-                Text(message)
+                Text(message + "\n\n「プレミアムにする」から購入導線（会員情報）へ進めます。")
                     .font(.subheadline)
                     .foregroundColor(Theme.dark.opacity(0.72))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 24)
 
-                // 期限表示（あれば）
                 if let exp = appState.subscriptionState.expiresAt {
                     Text("有効期限：\(formatDateJP(exp))")
                         .font(.caption)
@@ -86,17 +88,19 @@ struct SubscriptionGateView<Content: View>: View {
                 }
 
                 VStack(spacing: 10) {
-                    // 課金導線（将来 StoreKit / 購入画面を開く想定）
-                    if let onSubscribe {
-                        GlassButton(
-                            title: "プレミアムにする",
-                            systemImage: "crown.fill",
-                            background: Theme.accent
-                        ) {
+                    // ✅ 課金導線（最小差分：会員情報へ誘導 or onSubscribe）
+                    GlassButton(
+                        title: "プレミアムにする",
+                        systemImage: "crown.fill",
+                        background: Theme.accent
+                    ) {
+                        if let onSubscribe {
                             onSubscribe()
+                        } else {
+                            goToMemberInfo = true
                         }
-                        .frame(maxWidth: 320)
                     }
+                    .frame(maxWidth: 320)
 
                     if allowDismiss {
                         GlassButton(
@@ -115,7 +119,6 @@ struct SubscriptionGateView<Content: View>: View {
             }
             .padding(.vertical, 24)
         }
-        .navigationBarBackButtonHidden(true)
     }
 
     private func close() {

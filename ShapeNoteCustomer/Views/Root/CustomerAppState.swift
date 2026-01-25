@@ -2,6 +2,7 @@ import Foundation
 import FirebaseAuth
 import FirebaseFirestore
 import Combine
+import FirebaseStorage
 
 @MainActor
 final class CustomerAppState: ObservableObject {
@@ -12,23 +13,21 @@ final class CustomerAppState: ObservableObject {
     @Published var needsLegalConsent: Bool = false
     @Published private(set) var subscriptionState: SubscriptionState = .free
 
-    // ✅ 削除申請中ガード（A案：申請後ログイン不可を固定）
-    @Published private(set) var isDeletionRequested: Bool = false
-    @Published private(set) var deletionGuardMessage: String? = nil
+    // ✅ 削除UIで「再認証が必要」を判定するためのキー
+    private enum DeleteErrorUserInfoKey {
+        static let requiresReauth = "requiresReauth"
+    }
 
-    // MARK: - Firestore (lazy)
-
-    /// ✅ Firestore 初期化は遅延（起動直後のクラッシュ/白画面回避）
+    // MARK: - Firestore / Storage
     private lazy var db = Firestore.firestore()
+    private let storage = Storage.storage()
 
     // MARK: - Subscription
-
     private let subscriptionRepo: SubscriptionRepository = FirestoreSubscriptionRepository()
     private var subscriptionListener: ListenerRegistration?
     private var subscriptionExpiryTimer: Timer?
 
     // MARK: - UserDefaults Keys
-
     private enum SubscriptionCache {
         static let key = "ShapeNote.subscriptionState.v1"
     }
@@ -39,40 +38,18 @@ final class CustomerAppState: ObservableObject {
         static let acceptedAtKey = "ShapeNote.legal.acceptedAt.v1"
     }
 
-    /// ✅ 削除申請ローカルキャッシュ（最重要：即ガード）
-    private enum DeletionCache {
-        static let requestedKey = "ShapeNote.deletion.requested.v1"
-        static let requestedAtKey = "ShapeNote.deletion.requestedAt.v1"
-    }
-
     // MARK: - Init
 
     init() {
-        // 1) まずローカルキャッシュで UI を即安定
+        // 1) キャッシュ読み込み（UI安定化）
         loadSubscriptionCache()
-        loadDeletionCache()
 
-        // 2) Auth 状態から起動分岐
+        // 2) Auth状態で分岐（削除申請・ガード類は一切使わない）
         if let user = Auth.auth().currentUser {
             print("🔁 起動時のFirebaseAuthユーザー（顧客）: \(user.email ?? "nil")")
-
-            // ✅ ローカルで申請済みなら、絶対にログイン状態にしない（揺れ防止）
-            if isDeletionRequested {
-                applyDeletionGuard(reason: "init: local deletion requested")
-                Task { await forceLogout() }
-                return
-            }
-
-            // 一旦ログイン扱いにして良いが、直後にリモートで申請確認を必ず行う
             isLoggedIn = true
 
             Task {
-                await refreshDeletionRequestState() // ✅ リモート確認で補強
-                if isDeletionRequested {
-                    await forceLogout()
-                    return
-                }
-
                 await refreshLegalConsentState()
                 await refreshSubscriptionState()
                 startSubscriptionListeningIfPossible()
@@ -96,26 +73,12 @@ final class CustomerAppState: ObservableObject {
 
     // MARK: - Public: Auth State
 
-    /// UI/ログイン画面側から呼ばれる想定
     func setLoggedIn(_ value: Bool) {
-        // ✅ 申請済みなら true を受け付けない（ここが揺れ止めの要）
-        if value, isDeletionRequested {
-            applyDeletionGuard(reason: "setLoggedIn(true) blocked: deletion requested")
-            Task { await forceLogout() }
-            return
-        }
-
         self.isLoggedIn = value
         print(value ? "✅ 顧客ログイン状態に変更" : "🚪 顧客ログアウト状態に変更")
 
         if value {
             Task {
-                await refreshDeletionRequestState()
-                if isDeletionRequested {
-                    await forceLogout()
-                    return
-                }
-
                 await refreshLegalConsentState()
                 await refreshSubscriptionState()
                 startSubscriptionListeningIfPossible()
@@ -127,66 +90,12 @@ final class CustomerAppState: ObservableObject {
         }
     }
 
-    // MARK: - ✅ A案: Deletion Request Guard
+    // MARK: - ✅ Account Deletion (Apple 5.1.1(v) compliant)
 
-    private func applyDeletionGuard(reason: String) {
-        isLoggedIn = false
-        needsLegalConsent = false
-        applySubscriptionState(.free, reason: reason)
-        stopSubscriptionListening()
-        deletionGuardMessage = "退会申請を受け付けています。処理完了までログインできません。"
-        print("🚫 deletion guard enabled: \(reason)")
-    }
-
-    private func loadDeletionCache() {
-        let requested = UserDefaults.standard.bool(forKey: DeletionCache.requestedKey)
-        isDeletionRequested = requested
-        if requested {
-            deletionGuardMessage = "退会申請を受け付けています。処理完了までログインできません。"
-        }
-    }
-
-    private func saveDeletionCache(requestedAt: Date = Date()) {
-        UserDefaults.standard.set(true, forKey: DeletionCache.requestedKey)
-        UserDefaults.standard.set(requestedAt.timeIntervalSince1970, forKey: DeletionCache.requestedAtKey)
-
-        isDeletionRequested = true
-        deletionGuardMessage = "退会申請を受け付けています。処理完了までログインできません。"
-    }
-
-    /// ✅ 起動後 / ログイン後にサーバー側の申請有無を確認（端末変更・再インストール対策）
-    func refreshDeletionRequestState() async {
-        guard let uid = Auth.auth().currentUser?.uid else { return }
-
-        // ローカル true なら揺れ防止のためリモート確認は不要（解除しない）
-        if isDeletionRequested { return }
-
-        do {
-            let snap = try await db.collection("accountDeletionRequests").document(uid).getDocument()
-
-            guard snap.exists else { return }
-
-            let data = snap.data() ?? [:]
-            let status = (data["status"] as? String ?? "pending").lowercased()
-
-            // A案：pending/requested/processing はログイン不可
-            if ["pending", "requested", "processing"].contains(status) {
-                saveDeletionCache()
-                print("🚫 deletion requested (remote) status=\(status) => guard enabled")
-            }
-
-            // 審査向けは解除ロジックを入れない（揺れ防止）
-            // ※もし運用で解除が必要なら "rejected/cancelled" の時だけ false に戻す処理を別途追加
-
-        } catch {
-            // 通信失敗時は解除しない（揺れ防止）
-            print("⚠️ refreshDeletionRequestState failed: \(error.localizedDescription)")
-        }
-    }
-
-    /// ✅ 退会申請（A案）
-    /// 挙動: Firestoreに申請記録 → ローカルに申請フラグ保存 → 強制ログアウト
-    func requestAccountDeletion() async throws {
+    /// ✅ アプリ内で「Authユーザー削除」まで完了させる（審査対応の中心）
+    /// - Firestore/Storage は best-effort（失敗しても Auth 削除を優先）
+    /// - `requiresRecentLogin` の場合のみ再認証を要求する（UI側でパスワード入力）
+    func deleteAccountNow(passwordForReauth: String?) async throws {
         guard let user = Auth.auth().currentUser else {
             throw NSError(
                 domain: "CustomerAppState",
@@ -198,26 +107,78 @@ final class CustomerAppState: ObservableObject {
         let uid = user.uid
         let email = user.email ?? ""
 
-        do {
-            try await db.collection("accountDeletionRequests").document(uid).setData([
-                "uid": uid,
-                "email": email,
-                "status": "pending",
-                "requestedAt": FieldValue.serverTimestamp(),
-                "clientRequestedAt": Date().timeIntervalSince1970
-            ], merge: true)
+        // 0) 先に監視停止（削除中の snapshot 更新・タイマー発火を避ける）
+        stopSubscriptionListening()
+        invalidateSubscriptionExpiryTimer()
 
-            print("📝 account deletion request created/updated: \(uid)")
+        // 1) Firestore/Storage は best-effort で削除（落ちてもOK）
+        await deleteUserDataBestEffort(uid: uid)
+
+        // 2) ✅ Firebase Auth ユーザー削除（審査で見られる最重要ポイント）
+        do {
+            try await user.delete()
+            print("✅ FirebaseAuth user.delete succeeded: uid=\(uid)")
         } catch {
-            print("❌ requestAccountDeletion Firestore error: \(error.localizedDescription)")
-            throw error
+            let ns = error as NSError
+
+            if ns.code == AuthErrorCode.requiresRecentLogin.rawValue {
+                // 再認証が必要
+                guard !email.isEmpty, let pw = passwordForReauth, !pw.isEmpty else {
+                    throw NSError(
+                        domain: "CustomerAppState",
+                        code: 403,
+                        userInfo: [
+                            NSLocalizedDescriptionKey: "安全のため再ログインが必要です。パスワードを入力してください。",
+                            DeleteErrorUserInfoKey.requiresReauth: true
+                        ]
+                    )
+                }
+
+                let credential = EmailAuthProvider.credential(withEmail: email, password: pw)
+                try await user.reauthenticate(with: credential)
+                try await user.delete()
+                print("✅ FirebaseAuth user.delete succeeded after reauth: uid=\(uid)")
+
+            } else {
+                print("❌ FirebaseAuth user.delete failed: \(ns.localizedDescription) code=\(ns.code)")
+                throw error
+            }
         }
 
-        // ローカル即ガード（最重要）
-        saveDeletionCache()
-
-        // 申請後ログイン不可を固定するため、即ログアウト
+        // 3) UI状態を完全リセット（Auth削除後は currentUser が nil になる想定）
         await forceLogout()
+    }
+
+    /// Firestore/Storage側の削除（best-effort）
+    private func deleteUserDataBestEffort(uid: String) async {
+        // Firestore: users/{uid}
+        do {
+            try await db.collection("users").document(uid).delete()
+            print("🗑️ Firestore users/\(uid) deleted")
+        } catch {
+            print("⚠️ Firestore users delete failed (best-effort): \(error.localizedDescription)")
+        }
+
+        // Firestore: coupons/{uid}/items/* と coupons/{uid}
+        do {
+            let items = try await db.collection("coupons").document(uid).collection("items").getDocuments()
+            for doc in items.documents {
+                do { try await doc.reference.delete() } catch { /* best-effort */ }
+            }
+            do { try await db.collection("coupons").document(uid).delete() } catch { /* best-effort */ }
+            print("🗑️ Firestore coupons/\(uid) deleted (best-effort)")
+        } catch {
+            print("⚠️ Firestore coupons delete failed (best-effort): \(error.localizedDescription)")
+        }
+
+        // Storage: user_icons/{uid}/profile.jpg（存在すれば削除）
+        let iconPath = "user_icons/\(uid)/profile.jpg"
+        do {
+            try await storage.reference().child(iconPath).delete()
+            print("🗑️ Storage \(iconPath) deleted (best-effort)")
+        } catch {
+            print("⚠️ Storage delete failed (best-effort): \(error.localizedDescription)")
+        }
     }
 
     // MARK: - ✅ Subscription (public)
@@ -278,7 +239,6 @@ final class CustomerAppState: ObservableObject {
 
         saveSubscriptionCache(subscriptionState)
         scheduleExpiryFallbackIfNeeded(for: subscriptionState)
-        // print("ℹ️ applySubscriptionState: \(reason)")
     }
 
     private func loadSubscriptionCache() {
@@ -374,7 +334,6 @@ final class CustomerAppState: ObservableObject {
 
             print("🧾 legal check (remote): accepted P=\(acceptedPrivacy) T=\(acceptedTerms) / required P=\(requiredPrivacy) T=\(requiredTerms) => show=\(shouldShow)")
         } catch {
-            // ネットワーク不調時はローカル採用（閉じ込め防止）
             let acceptedPrivacy = localAcceptedPrivacy()
             let acceptedTerms = localAcceptedTerms()
             let shouldShow = (acceptedPrivacy < requiredPrivacy) || (acceptedTerms < requiredTerms)
@@ -417,12 +376,6 @@ final class CustomerAppState: ObservableObject {
             try Auth.auth().signOut()
         } catch {
             print("⚠️ signOut error: \(error.localizedDescription)")
-        }
-
-        // ✅ 申請済みの場合、ログアウト後もガード表示を維持
-        if isDeletionRequested {
-            applyDeletionGuard(reason: "forceLogout: deletion requested")
-            return
         }
 
         isLoggedIn = false

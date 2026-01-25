@@ -20,6 +20,7 @@ public final class AuthHandler: ObservableObject, @unchecked Sendable {
                 completion(.failure(NSError(domain: "AuthHandler", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not found."])))
                 return
             }
+
             self.saveCredentials(email: email, password: password)
             self.saveLoginDate()
             completion(.success(user))
@@ -38,53 +39,79 @@ public final class AuthHandler: ObservableObject, @unchecked Sendable {
                 return
             }
 
-            Task {
+            let createdUID = user.uid
+
+            // ✅ @MainActor のまま async を扱う（user を別スレッドへ送らない）
+            Task { @MainActor in
                 do {
-                    try await self.createUserProfile(uid: user.uid, name: name, email: email)
+                    try await self.createUserProfile(uid: createdUID, name: name, email: email)
                     self.saveCredentials(email: email, password: password)
                     self.saveLoginDate()
                     completion(.success(user))
                 } catch {
+                    // ✅ Firestore作成失敗時：Authユーザーをロールバック削除（uidだけ渡す）
+                    await self.rollbackAuthUserIfNeeded(expectedUID: createdUID)
                     completion(.failure(error))
                 }
             }
         }
     }
 
-    // MARK: - Firestoreにユーザー情報を作成（初回のみ）
+    // MARK: - Firestoreにユーザー情報を作成（初回のみ）: rules整合版
     public func createUserProfile(uid: String, name: String, email: String) async throws {
         let db = Firestore.firestore()
         let docRef = db.collection("users").document(uid)
 
-        // 既に存在する場合はスキップ
+        // 既に存在する場合はスキップ（冪等）
         let snapshot = try await docRef.getDocument()
         if snapshot.exists { return }
 
         // ✅ ランダム4桁の顧客表示用ID（PTB-XXXX形式）
         let displayId = "PTB-" + String(Int.random(in: 1000...9999))
 
-        // Firestoreに登録
-        try await docRef.setData([
-            "uid": uid,
+        // ✅ rules allowedUserCreateKeys() に合わせる
+        let now = Timestamp(date: Date())
+        let payload: [String: Any] = [
             "displayId": displayId,
             "name": name,
             "email": email,
             "membershipRank": "Bronze",
-            "visitCount": 0,
-            "joinedAt": Timestamp(date: Date())
-        ])
-        print("✅ Firestoreに新規ユーザー登録完了: \(displayId)")
+            "createdAt": now,
+            "updatedAt": now
+            // gender/birth*/legal を初期投入する場合は allowed keys 内で追加OK
+        ]
+
+        try await docRef.setData(payload)
+        print("✅ Firestoreに新規ユーザー登録完了: \(displayId) uid=\(uid)")
+    }
+
+    // MARK: - ロールバック（Firestore失敗時にAuthユーザー削除）
+    private func rollbackAuthUserIfNeeded(expectedUID: String) async {
+        guard let current = Auth.auth().currentUser else { return }
+        guard current.uid == expectedUID else { return }
+
+        do {
+            try await current.delete()
+            print("🧹 Rollback: FirebaseAuth user.delete succeeded (Firestore失敗のため削除) uid=\(expectedUID)")
+        } catch {
+            let ns = error as NSError
+            print("⚠️ Rollback failed: \(ns.localizedDescription) code=\(ns.code)")
+        }
     }
 
     // MARK: - Firebaseログアウト
     public func signOut() {
+        // ✅ signOut前に email を確保
+        let emailBeforeSignOut = Auth.auth().currentUser?.email
+
         do {
             try Auth.auth().signOut()
             print("✅ サインアウト完了")
         } catch {
             print("⚠️ サインアウトエラー: \(error.localizedDescription)")
         }
-        if let email = Auth.auth().currentUser?.email {
+
+        if let email = emailBeforeSignOut {
             deleteCredentials(for: email)
         }
         UserDefaults.standard.removeObject(forKey: "lastLoginDate")

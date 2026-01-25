@@ -21,76 +21,64 @@ struct CustomerRootView: View {
     var body: some View {
 
         // =========================
-        // ✅ A案：削除申請中ガード
+        // ✅ 通常ルート（TabView）
         // =========================
-        if appState.isDeletionRequested {
-            NavigationStack {
-                DeletionRequestGuardView(message: appState.deletionGuardMessage)
-            }
+        TabView(selection: $selectedTab) {
 
-        } else {
-            // =========================
-            // 通常ルート（TabView）
-            // =========================
-            TabView(selection: $selectedTab) {
+            CalendarView(weightManager: weightManager)
+                .tabItem { Label("記録", systemImage: "chart.line.uptrend.xyaxis") }
+                .tag(0)
 
-                CalendarView(weightManager: weightManager)
-                    .tabItem { Label("記録", systemImage: "chart.line.uptrend.xyaxis") }
-                    .tag(0)
+            CommunityView()
+                .tabItem { Label("コミュニティ", systemImage: "person.3.fill") }
+                .tag(1)
 
-                CommunityView()
-                    .tabItem { Label("コミュニティ", systemImage: "person.3.fill") }
-                    .tag(1)
+            ExerciseSheetView()
+                .tabItem { Label("エクササイズ", systemImage: "figure.walk.circle") }
+                .tag(2)
 
-                ExerciseSheetView()
-                    .tabItem { Label("エクササイズ", systemImage: "figure.walk.circle") }
-                    .tag(2)
+            PostureAnalysisEntryView()
+                .tabItem { Label("姿勢分析", systemImage: "viewfinder.circle") }
+                .tag(3)
 
-                PostureAnalysisEntryView()
-                    .tabItem { Label("姿勢分析", systemImage: "viewfinder.circle") }
-                    .tag(3)
+            MyPageView()
+                .tabItem { Label("マイページ", systemImage: "person.crop.circle") }
+                .tag(4)
+        }
+        // =========================
+        // 初期ロード
+        // =========================
+        .task {
+            await appState.refreshLegalConsentState()
+            await appState.refreshSubscriptionState()
+            await weightManager.loadWeights()
 
-                MyPageView()
-                    .tabItem { Label("マイページ", systemImage: "person.crop.circle") }
-                    .tag(4)
-            }
-            // =========================
-            // 初期ロード
-            // =========================
-            .task {
-                // 削除申請状態は AppState init / setLoggedIn で確認済み
-                await appState.refreshLegalConsentState()
-                await appState.refreshSubscriptionState()
-                await weightManager.loadWeights()
+            weightManager.setSubscriptionState(appState.subscriptionState)
+        }
+        .onReceive(appState.$subscriptionState) { state in
+            weightManager.setSubscriptionState(state)
+        }
+        .onChange(of: selectedTab) { _, newValue in
+            guard newValue == 0 else { return }
+            Task { await weightManager.loadWeights() }
+        }
+        // =========================
+        // Legal 同意
+        // =========================
+        .fullScreenCover(isPresented: needsLegalConsentBinding) {
+            LegalConsentView(
+                onAgree: {
+                    // 1) 先に閉じる（レビュー機での無反応対策）
+                    appState.needsLegalConsent = false
 
-                weightManager.setSubscriptionState(appState.subscriptionState)
-            }
-            .onReceive(appState.$subscriptionState) { state in
-                weightManager.setSubscriptionState(state)
-            }
-            .onChange(of: selectedTab) { _, newValue in
-                guard newValue == 0 else { return }
-                Task { await weightManager.loadWeights() }
-            }
-            // =========================
-            // Legal 同意（削除ガード後のみ）
-            // =========================
-            .fullScreenCover(isPresented: needsLegalConsentBinding) {
-                LegalConsentView(
-                    onAgree: {
-                        // 1) 先に閉じる（レビュー機での無反応対策）
-                        appState.needsLegalConsent = false
-
-                        // 2) Firestore 保存は裏で
-                        Task {
-                            await saveLatestLegalConsent()
-                            // 端末差・回線差の保険
-                            await appState.refreshLegalConsentState()
-                        }
+                    // 2) Firestore 保存は裏で
+                    Task {
+                        await saveLatestLegalConsent()
+                        await appState.refreshLegalConsentState()
                     }
-                )
-                .interactiveDismissDisabled(true)
-            }
+                }
+            )
+            .interactiveDismissDisabled(true)
         }
     }
 
@@ -98,7 +86,6 @@ struct CustomerRootView: View {
     @MainActor
     private func saveLatestLegalConsent() async {
         guard let uid = Auth.auth().currentUser?.uid else {
-            // 未ログインなら保存不可 → 次回また表示
             return
         }
 

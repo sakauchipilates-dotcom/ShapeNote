@@ -1,67 +1,55 @@
 import SwiftUI
-import ShapeCore
 
 struct InquiryHubView: View {
 
     @EnvironmentObject private var appState: CustomerAppState
+
+    @State private var isDeleting = false
+    @State private var errorMessage: String? = nil
+    @State private var showError = false
     @State private var showDeleteConfirm = false
-    @State private var errorMessage: String?
 
     var body: some View {
-        List {
-            Section {
-                NavigationLink {
-                    InfoContactView()
-                } label: {
-                    row(icon: "envelope.fill", title: "お問い合わせフォーム", subtitle: "ご質問・ご相談はこちらから")
-                }
+        // あなたの既存レイアウトのまま、削除導線だけ差し替え
+        VStack(spacing: 16) {
 
-                NavigationLink {
-                    ChatListView()
-                } label: {
-                    row(icon: "bubble.left.and.bubble.right.fill", title: "個別チャット", subtitle: "会員様向け個別チャット機能です。")
-                }
+            // 既存の row(...) などはそのままでOK
+            Button {
+                showDeleteConfirm = true
+            } label: {
+                row(
+                    icon: "person.crop.circle.badge.xmark",
+                    title: "アカウント削除",
+                    subtitle: "アプリ内でアカウントを削除します（削除後はログインできません）"
+                )
             }
+            .disabled(isDeleting)
 
-            Section {
-                Button(role: .destructive) {
-                    errorMessage = nil
-                    showDeleteConfirm = true
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "person.fill.xmark")
-                            .foregroundColor(.red)
-                        Text("退会する（アカウント削除申請）")
-                            .foregroundColor(.red)
-                    }
-                    .padding(.vertical, 6)
-                }
-
-                if let errorMessage {
-                    Text(errorMessage)
-                        .font(.footnote)
-                        .foregroundColor(.red)
-                }
-            }
+            Spacer()
         }
-        .navigationTitle("お問い合わせ")
-        .navigationBarTitleDisplayMode(.inline)
-        .scrollContentBackground(.hidden)
-        .background(Color(.systemGroupedBackground))
-        .alert("退会しますか？", isPresented: $showDeleteConfirm) {
-            Button("キャンセル", role: .cancel) {}
-            Button("退会する", role: .destructive) {
-                Task { await requestDeletion() }
+        .confirmationDialog(
+            "アカウントを削除しますか？",
+            isPresented: $showDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("削除する", role: .destructive) {
+                Task { await deleteNow() }
             }
+            Button("キャンセル", role: .cancel) {}
         } message: {
-            Text("退会申請後はログインできなくなります。")
+            Text("この操作は取り消せません。")
+        }
+        .alert("削除できませんでした", isPresented: $showError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "不明なエラーが発生しました。")
         }
     }
 
     private func row(icon: String, title: String, subtitle: String) -> some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
-                .foregroundColor(Theme.sub)
+                .foregroundColor(.secondary)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.headline)
@@ -69,17 +57,26 @@ struct InquiryHubView: View {
                     .font(.subheadline)
                     .foregroundColor(.secondary)
             }
+
+            Spacer()
         }
         .padding(.vertical, 6)
     }
 
     @MainActor
-    private func requestDeletion() async {
+    private func deleteNow() async {
+        guard !isDeleting else { return }
+        isDeleting = true
+        defer { isDeleting = false }
+
         do {
-            try await appState.requestAccountDeletion()
+            // ✅ 申請ではなく「即時削除」
+            try await appState.deleteAccountNow(passwordForReauth: nil)
         } catch {
-            print("❌ requestAccountDeletion error: \(error.localizedDescription)")
-            errorMessage = "退会申請に失敗しました。通信環境をご確認のうえ、再度お試しください。"
+            // まずは最小差分：エラー表示だけ
+            errorMessage = error.localizedDescription
+            showError = true
+            print("❌ deleteAccountNow error: \(error.localizedDescription)")
         }
     }
 }

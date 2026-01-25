@@ -8,13 +8,23 @@ struct MyPageView: View {
 
     @EnvironmentObject var appState: CustomerAppState
     @EnvironmentObject var imageVM: ProfileImageVM
-    private let auth = AuthHandler.shared
 
     @State private var availableCouponCount: Int = 0
     @State private var isLoadingCoupons: Bool = true
 
     @State private var showGateAlert: Bool = false
     @State private var gateMessage: String = ""
+
+    // ✅ アップグレード導線（会員情報へ遷移）
+    @State private var goToMemberInfo: Bool = false
+
+    // ✅ アカウント削除 UI
+    @State private var showDeleteConfirm: Bool = false
+    @State private var showReauthSheet: Bool = false
+    @State private var reauthPassword: String = ""
+    @State private var isDeleting: Bool = false
+    @State private var deleteErrorMessage: String = ""
+    @State private var showDeleteErrorAlert: Bool = false
 
     var body: some View {
         NavigationStack {
@@ -62,10 +72,103 @@ struct MyPageView: View {
                 }
                 await fetchAvailableCouponCount()
             }
+
+            // ✅ Premiumゲート：2ボタン + 購入導線（審査向け）
             .alert("プレミアム限定", isPresented: $showGateAlert) {
-                Button("OK", role: .cancel) {}
+                Button("アップグレードする") { goToMemberInfo = true }
+                Button("キャンセル", role: .cancel) {}
             } message: {
                 Text(gateMessage)
+            }
+
+            // ✅ 購入導線（会員情報）
+            .navigationDestination(isPresented: $goToMemberInfo) {
+                MemberInfoView()
+                    .environmentObject(imageVM)
+            }
+
+            // ✅ アカウント削除：最終確認
+            .alert("アカウントを削除しますか？", isPresented: $showDeleteConfirm) {
+                Button("削除する", role: .destructive) {
+                    Task { await runDeleteFlow(password: nil) }
+                }
+                Button("キャンセル", role: .cancel) {}
+            } message: {
+                Text("この操作は取り消せません。\nログイン情報およびアカウントに紐づくデータが削除されます。")
+            }
+
+            // ✅ 削除失敗時アラート
+            .alert("削除できませんでした", isPresented: $showDeleteErrorAlert) {
+                Button("OK") {}
+            } message: {
+                Text(deleteErrorMessage)
+            }
+
+            // ✅ 再認証（パスワード入力）シート
+            .sheet(isPresented: $showReauthSheet) {
+                NavigationStack {
+                    VStack(spacing: 16) {
+                        Text("安全のため、再ログインが必要です。")
+                            .font(.headline)
+
+                        Text("パスワードを入力して、アカウント削除を続行してください。")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+
+                        SecureField("パスワード", text: $reauthPassword)
+                            .textContentType(.password)
+                            .padding(12)
+                            .background(Color(.secondarySystemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                        Button {
+                            Task { await runDeleteFlow(password: reauthPassword) }
+                        } label: {
+                            Text("続行して削除する")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(reauthPassword.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isDeleting)
+
+                        Button(role: .cancel) {
+                            reauthPassword = ""
+                            showReauthSheet = false
+                        } label: {
+                            Text("キャンセル")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+
+                        Spacer()
+                    }
+                    .padding(16)
+                    .navigationTitle("再ログイン")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button("閉じる") {
+                                reauthPassword = ""
+                                showReauthSheet = false
+                            }
+                        }
+                    }
+                }
+                .presentationDetents([.medium])
+            }
+
+            // ✅ 削除中オーバーレイ
+            .overlay {
+                if isDeleting {
+                    ZStack {
+                        Color.black.opacity(0.18).ignoresSafeArea()
+                        ProgressView("削除中…")
+                            .padding(16)
+                            .background(Color(.systemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .shadow(radius: 6)
+                    }
+                }
             }
         }
     }
@@ -120,7 +223,7 @@ struct MyPageView: View {
 
     private func lockedQuickCard(title: String, subtitle: String, systemImage: String) -> some View {
         Button {
-            gateMessage = "この機能はプレミアム会員（月額440円）で利用できます。"
+            gateMessage = "この機能はプレミアム会員（月額440円）で利用できます。\n「アップグレードする」から購入画面（会員情報）へ進めます。"
             showGateAlert = true
         } label: {
             ZStack {
@@ -182,7 +285,7 @@ struct MyPageView: View {
     private var menuSection: some View {
         VStack(spacing: 0) {
 
-            NavigationLink(destination: MemberInfoView()) {
+            NavigationLink(destination: MemberInfoView().environmentObject(imageVM)) {
                 Label("会員情報", systemImage: "person.text.rectangle")
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding()
@@ -198,7 +301,7 @@ struct MyPageView: View {
                 }
             } else {
                 Button {
-                    gateMessage = "来店履歴はプレミアム会員（月額440円）で利用できます。"
+                    gateMessage = "来店履歴はプレミアム会員（月額440円）で利用できます。\n「アップグレードする」から購入画面（会員情報）へ進めます。"
                     showGateAlert = true
                 } label: {
                     HStack {
@@ -228,6 +331,17 @@ struct MyPageView: View {
             }
             Divider()
 
+            // ✅ アカウント削除（アプリ内で完結：Apple 5.1.1(v) 対策）
+            Button {
+                showDeleteConfirm = true
+            } label: {
+                Label("アカウント削除", systemImage: "person.crop.circle.badge.xmark")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+                    .foregroundColor(.red)
+            }
+            Divider()
+
             // ✅ ログアウト
             Button {
                 Task { await appState.forceLogout() }
@@ -243,6 +357,41 @@ struct MyPageView: View {
         .shadow(radius: 1)
         .padding(.horizontal)
         .padding(.top, 6)
+    }
+
+    // MARK: - Delete flow
+    @MainActor
+    private func runDeleteFlow(password: String?) async {
+        guard !isDeleting else { return }
+
+        isDeleting = true
+        defer { isDeleting = false }
+
+        do {
+            try await appState.deleteAccountNow(passwordForReauth: password)
+
+            // 成功したら入力を片付け
+            reauthPassword = ""
+            showReauthSheet = false
+
+        } catch {
+            let ns = error as NSError
+
+            // CustomerAppState 側の「再認証が必要」判定（userInfoに requiresReauth=true を入れている）
+            let requiresReauth = (ns.userInfo["requiresReauth"] as? Bool) == true
+                || ns.code == AuthErrorCode.requiresRecentLogin.rawValue
+
+            if requiresReauth && (password == nil || password?.isEmpty == true) {
+                // パスワード入力を促す
+                reauthPassword = ""
+                showReauthSheet = true
+                return
+            }
+
+            // それ以外はエラー表示
+            deleteErrorMessage = ns.localizedDescription
+            showDeleteErrorAlert = true
+        }
     }
 
     // MARK: - Firestore：利用可能クーポン数（Premiumのみ呼ばれる）
