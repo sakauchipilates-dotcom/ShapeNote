@@ -27,6 +27,10 @@ final class SubscriptionStore: ObservableObject {
             throw StoreError.noCurrentUser
         }
 
+        // 🧪 ここで実機ビルドの Bundle ID を確認
+        let bundleId = Bundle.main.bundleIdentifier ?? "nil"
+        print("📦 bundleIdentifier at runtime = \(bundleId)")
+
         isPurchasing = true
         lastErrorMessage = nil
         defer { isPurchasing = false }

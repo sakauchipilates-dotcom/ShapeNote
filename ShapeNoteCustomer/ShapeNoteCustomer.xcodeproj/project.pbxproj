@@ -17,6 +17,7 @@
 		6D4AA9042EC5C26A004EEBBA /* PhotoCaptureDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D4AA9032EC5C26A004EEBBA /* PhotoCaptureDelegate.swift */; };
 		6D4AA9062EC5C284004EEBBA /* PostureAnalysisFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D4AA9052EC5C284004EEBBA /* PostureAnalysisFlowView.swift */; };
 		6D4AA9082EC5C4A8004EEBBA /* CameraPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D4AA9072EC5C4A8004EEBBA /* CameraPreview.swift */; };
+		6D6458482F30F6D8006DBDF0 /* SubscriptionLegalInfoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D6458472F30F6D8006DBDF0 /* SubscriptionLegalInfoView.swift */; };
 		6D7D65F92EC1B7B0003D1943 /* ExerciseExplainListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D7D65F82EC1B7B0003D1943 /* ExerciseExplainListView.swift */; };
 		6D7D65FB2EC1B7C3003D1943 /* ExerciseExplainDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D7D65FA2EC1B7C3003D1943 /* ExerciseExplainDetailView.swift */; };
 		6D7D65FD2EC1C244003D1943 /* VisitHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D7D65FC2EC1C244003D1943 /* VisitHistoryView.swift */; };
@@ -124,6 +125,7 @@
 		6D4AA9052EC5C284004EEBBA /* PostureAnalysisFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostureAnalysisFlowView.swift; sourceTree = "<group>"; };
 		6D4AA9072EC5C4A8004EEBBA /* CameraPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPreview.swift; sourceTree = "<group>"; };
 		6D4DE4612EAA5DC5003B9894 /* ShapeNoteCustomer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ShapeNoteCustomer.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		6D6458472F30F6D8006DBDF0 /* SubscriptionLegalInfoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionLegalInfoView.swift; sourceTree = "<group>"; };
 		6D7D65F82EC1B7B0003D1943 /* ExerciseExplainListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseExplainListView.swift; sourceTree = "<group>"; };
 		6D7D65FA2EC1B7C3003D1943 /* ExerciseExplainDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseExplainDetailView.swift; sourceTree = "<group>"; };
 		6D7D65FC2EC1C244003D1943 /* VisitHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisitHistoryView.swift; sourceTree = "<group>"; };
@@ -435,6 +437,7 @@
 				6D8D8E242EF8F11A00AC15D6 /* ShareSheet.swift */,
 				6D8D8E2D2EF8FC3000AC15D6 /* ComingSoonOverlay.swift */,
 				6D8D8E312EF97A1200AC15D6 /* LegalAgreementView.swift */,
+				6D6458472F30F6D8006DBDF0 /* SubscriptionLegalInfoView.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -617,6 +620,7 @@
 				6DBD98E52F233B70008AA187 /* SubscriptionStore.swift in Sources */,
 				6DE9AD4E2F079E6500310C04 /* CommunityModels.swift in Sources */,
 				6DF01B262EB4436D00B0CC1B /* CalendarView.swift in Sources */,
+				6D6458482F30F6D8006DBDF0 /* SubscriptionLegalInfoView.swift in Sources */,
 				6D87638D2EC77B4500BD89CA /* GlassButton.swift in Sources */,
 				6DE9AD562F07C36200310C04 /* SubscriptionState.swift in Sources */,
 				6DF01B272EB4436D00B0CC1B /* ChatListView.swift in Sources */,
@@ -839,10 +843,11 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = 6AMX386ZAJ;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = ShapeNote;
 				INFOPLIST_KEY_NSCameraUsageDescription = "AI姿勢分析のためにカメラを使用します。";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "姿勢分析レポートを写真アプリへ保存するために使用します。";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -874,10 +879,11 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = 6AMX386ZAJ;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = ShapeNote;
 				INFOPLIST_KEY_NSCameraUsageDescription = "AI姿勢分析のためにカメラを使用します。";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "姿勢分析レポートを写真アプリへ保存するために使用します。";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

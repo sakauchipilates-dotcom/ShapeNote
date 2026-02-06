@@ -5,7 +5,7 @@ struct CommunityView: View {
 
     @StateObject private var vm = CommunityVM()
 
-    // 近日追加予定の入口（ダミー）
+    // 近日追加予定の入口（ダミー or 本番入口）
     private struct Feature: Identifiable {
         let id = UUID()
         let icon: String
@@ -15,10 +15,30 @@ struct CommunityView: View {
     }
 
     private let features: [Feature] = [
-        .init(icon: SNCommunityCategory.share.icon, title: SNCommunityCategory.share.rawValue, subtitle: SNCommunityCategory.share.subtitle, destinationCategory: .share),
-        .init(icon: SNCommunityCategory.event.icon, title: SNCommunityCategory.event.rawValue, subtitle: SNCommunityCategory.event.subtitle, destinationCategory: .event),
-        .init(icon: SNCommunityCategory.recommend.icon, title: SNCommunityCategory.recommend.rawValue, subtitle: SNCommunityCategory.recommend.subtitle, destinationCategory: .recommend),
-        .init(icon: SNCommunityCategory.announcement.icon, title: SNCommunityCategory.announcement.rawValue, subtitle: SNCommunityCategory.announcement.subtitle, destinationCategory: .announcement)
+        .init(
+            icon: SNCommunityCategory.share.icon,
+            title: SNCommunityCategory.share.rawValue,
+            subtitle: SNCommunityCategory.share.subtitle,
+            destinationCategory: .share
+        ),
+        .init(
+            icon: SNCommunityCategory.event.icon,
+            title: SNCommunityCategory.event.rawValue,
+            subtitle: SNCommunityCategory.event.subtitle,
+            destinationCategory: .event
+        ),
+        .init(
+            icon: SNCommunityCategory.recommend.icon,
+            title: SNCommunityCategory.recommend.rawValue,
+            subtitle: SNCommunityCategory.recommend.subtitle,
+            destinationCategory: .recommend
+        ),
+        .init(
+            icon: SNCommunityCategory.announcement.icon,
+            title: SNCommunityCategory.announcement.rawValue,
+            subtitle: SNCommunityCategory.announcement.subtitle,
+            destinationCategory: .announcement
+        )
     ]
 
     var body: some View {
@@ -27,7 +47,12 @@ struct CommunityView: View {
                 VStack(spacing: 16) {
                     heroCard
                     quickActionsCard
-                    latestCard
+
+                    // 初期リリースでは最新一覧は封印（コミュニティOFF時は非表示）
+                    if FeatureFlags.isCommunityEnabled {
+                        latestCard
+                    }
+
                     Spacer(minLength: 12)
                 }
                 .padding(.top, 12)
@@ -37,12 +62,22 @@ struct CommunityView: View {
             .navigationTitle("コミュニティ")
             .navigationBarTitleDisplayMode(.inline)
             .background(Color(.systemGroupedBackground).ignoresSafeArea())
-            .task { await vm.fetch() }
-            .refreshable { await vm.fetch() }
+            .task {
+                // コミュニティ機能が有効なビルドでのみデータ取得
+                if FeatureFlags.isCommunityEnabled {
+                    await vm.fetch()
+                }
+            }
+            .refreshable {
+                if FeatureFlags.isCommunityEnabled {
+                    await vm.fetch()
+                }
+            }
         }
     }
 
     // MARK: - Hero
+
     private var heroCard: some View {
         VStack(spacing: 10) {
             Image(systemName: "person.3.fill")
@@ -58,20 +93,38 @@ struct CommunityView: View {
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
 
-            HStack(spacing: 8) {
-                Image(systemName: "clock")
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(.secondary)
+            // 機能ON/OFFでバッジの表示を切り替え
+            if FeatureFlags.isCommunityEnabled {
+                HStack(spacing: 8) {
+                    Image(systemName: "sparkles")
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.secondary)
 
-                Text("現在は準備中（近日公開）")
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(.secondary)
+                    Text("コミュニティ機能をご利用いただけます")
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Capsule().fill(Color.black.opacity(0.05)))
+            } else {
+                HStack(spacing: 8) {
+                    Image(systemName: "clock")
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.secondary)
+
+                    Text("現在は準備中（近日公開）")
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Capsule().fill(Color.black.opacity(0.05)))
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(Capsule().fill(Color.black.opacity(0.05)))
 
-            if let msg = vm.errorMessage, !msg.isEmpty {
+            if FeatureFlags.isCommunityEnabled,
+               let msg = vm.errorMessage,
+               !msg.isEmpty {
                 Text(msg)
                     .font(.footnote)
                     .foregroundColor(.red)
@@ -89,7 +142,8 @@ struct CommunityView: View {
         .padding(.horizontal, 16)
     }
 
-    // MARK: - Quick actions
+    // MARK: - Quick actions（近日追加予定）
+
     private var quickActionsCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("近日追加予定")
@@ -98,52 +152,28 @@ struct CommunityView: View {
 
             VStack(spacing: 10) {
                 ForEach(features) { f in
-                    NavigationLink {
-                        // ✅ カテゴリが設定されている場合：カテゴリ別一覧へ
-                        if let category = f.destinationCategory {
-                            CommunityFeedListView(
-                                category: category,
-                                items: vm.items(for: category)
-                            )
-                        } else {
-                            // 保険：nil の場合は従来のダミー詳細へ
-                            CommunityPlaceholderDetailView(title: f.title, subtitle: f.subtitle)
-                        }
-                    } label: {
-                        HStack(spacing: 12) {
-                            ZStack {
-                                Circle()
-                                    .fill(Theme.sub.opacity(0.15))
-                                    .frame(width: 40, height: 40)
-
-                                Image(systemName: f.icon)
-                                    .font(.system(size: 18, weight: .bold))
-                                    .foregroundColor(Theme.sub)
+                    if FeatureFlags.isCommunityEnabled {
+                        // 機能ON時：カテゴリ別一覧への入口として動く
+                        NavigationLink {
+                            if let category = f.destinationCategory {
+                                CommunityFeedListView(
+                                    category: category,
+                                    items: vm.items(for: category)
+                                )
+                            } else {
+                                CommunityPlaceholderDetailView(
+                                    title: f.title,
+                                    subtitle: f.subtitle
+                                )
                             }
-
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(f.title)
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundColor(Theme.dark)
-
-                                Text(f.subtitle)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-
-                            Spacer()
-
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 13, weight: .bold))
-                                .foregroundColor(.secondary.opacity(0.7))
+                        } label: {
+                            featureRow(f)
                         }
-                        .padding(12)
-                        .background(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .fill(Color(.secondarySystemBackground))
-                        )
+                        .buttonStyle(.plain)
+                    } else {
+                        // 機能OFF時：タップしても画面遷移しないダミーとして表示
+                        featureRow(f)
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }
@@ -157,7 +187,44 @@ struct CommunityView: View {
         .padding(.horizontal, 16)
     }
 
-    // MARK: - Latest
+    private func featureRow(_ f: Feature) -> some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(Theme.sub.opacity(0.15))
+                    .frame(width: 40, height: 40)
+
+                Image(systemName: f.icon)
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(Theme.sub)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(f.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(Theme.dark)
+
+                Text(f.subtitle)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(.secondary.opacity(0.7))
+                .opacity(FeatureFlags.isCommunityEnabled ? 1.0 : 0.4)
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color(.secondarySystemBackground))
+        )
+    }
+
+    // MARK: - Latest（コミュニティON時のみ表示）
+
     private var latestCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -265,6 +332,7 @@ struct CommunityView: View {
 }
 
 // MARK: - Placeholder Detail
+
 private struct CommunityPlaceholderDetailView: View {
     let title: String
     let subtitle: String

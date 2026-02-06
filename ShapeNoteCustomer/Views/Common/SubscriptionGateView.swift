@@ -15,7 +15,7 @@ struct SubscriptionGateView<Content: View>: View {
     private let onSubscribe: (() -> Void)?
     private let content: () -> Content
 
-    // ✅ 追加：購入導線へ遷移（会員情報など）
+    // ✅ 購入導線へ遷移（会員情報など）
     @State private var goToMemberInfo: Bool = false
 
     init(
@@ -52,7 +52,7 @@ struct SubscriptionGateView<Content: View>: View {
         .animation(.easeInOut(duration: 0.2), value: appState.subscriptionState.expiresAt)
         .interactiveDismissDisabled(!allowDismiss && !isPremiumNow)
         .navigationDestination(isPresented: $goToMemberInfo) {
-            // ✅ ここを “実際の購入画面” に差し替えてもOK
+            // ※ 実際の購入画面
             MemberInfoView()
         }
         .navigationBarBackButtonHidden(true)
@@ -74,11 +74,16 @@ struct SubscriptionGateView<Content: View>: View {
                     .font(.title3.weight(.semibold))
                     .foregroundColor(Theme.dark.opacity(0.88))
 
-                Text(message + "\n\n「プレミアムにする」から購入導線（会員情報）へ進めます。")
-                    .font(.subheadline)
-                    .foregroundColor(Theme.dark.opacity(0.72))
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
+                // 🔽 自動更新・月額であることを明示
+                Text(
+                    message
+                    + "\n\nShapeNote プレミアムは月額制の自動更新サブスクリプションです。"
+                    + "「プレミアムにする」から購入画面へ進めます。"
+                )
+                .font(.subheadline)
+                .foregroundColor(Theme.dark.opacity(0.72))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
 
                 if let exp = appState.subscriptionState.expiresAt {
                     Text("有効期限：\(formatDateJP(exp))")
@@ -88,7 +93,7 @@ struct SubscriptionGateView<Content: View>: View {
                 }
 
                 VStack(spacing: 10) {
-                    // ✅ 課金導線（最小差分：会員情報へ誘導 or onSubscribe）
+                    // ✅ 課金導線
                     GlassButton(
                         title: "プレミアムにする",
                         systemImage: "crown.fill",
@@ -114,6 +119,11 @@ struct SubscriptionGateView<Content: View>: View {
                     }
                 }
                 .padding(.top, 8)
+
+                // ✅ ここが追加ポイント（ボタン直後）
+                SubscriptionLegalInfoView()
+                    .padding(.horizontal, 24)
+                    .padding(.top, 4)
 
                 Spacer(minLength: 0)
             }
