@@ -16,16 +16,29 @@ enum FeatureFlags {
         #endif
     }
 
-    /// レポート書き出し機能
-    /// （将来 Export だけ段階解放したい場合に備えて分離）
+    /// レポート書き出し機能（姿勢分析用）
+    ///
+    /// 将来、解析本体とレポート出力を段階的に解放することを想定して分離。
     static var postureAnalysisExportEnabled: Bool {
         #if DEBUG
         return true
         #else
-        // 本番でもレポート書き出し自体は許可
+        // 本番でも姿勢レポート書き出し自体は許可
         return true
         #endif
     }
+
+    // MARK: - 記録 / データ分析関連
+
+    /// 「体重・体調などの記録データをレポートとして出力する」機能の有効 / 無効
+    ///
+    /// - DEBUG: 有効（開発・検証用にボタンをアクティブにする想定）
+    /// - RELEASE: 無効（初期リリースではUIはロック表示のみ）
+    #if DEBUG
+    static let isRecordExportEnabled: Bool = true
+    #else
+    static let isRecordExportEnabled: Bool = false
+    #endif
 
     // MARK: - サブスクリプション
 

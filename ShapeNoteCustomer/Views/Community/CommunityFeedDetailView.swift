@@ -52,7 +52,12 @@ struct CommunityFeedDetailView: View {
 #Preview {
     NavigationStack {
         CommunityFeedDetailView(
-            item: SNCommunityFeedItem(category: .recommend, title: "タイトル", body: "本文", date: Date())
+            item: SNCommunityFeedItem(
+                category: .recommend,
+                title: "タイトル",
+                body: "本文",
+                date: Date()
+            )
         )
     }
 }

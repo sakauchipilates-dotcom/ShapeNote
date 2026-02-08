@@ -14,6 +14,11 @@ struct CommunityView: View {
         let destinationCategory: SNCommunityCategory?
     }
 
+    /// トップのクイックアクション
+    /// - 記録をシェア
+    /// - ダイエットのヒント
+    /// - 運動のヒント
+    /// - セルフケアのヒント
     private let features: [Feature] = [
         .init(
             icon: SNCommunityCategory.share.icon,
@@ -22,22 +27,22 @@ struct CommunityView: View {
             destinationCategory: .share
         ),
         .init(
-            icon: SNCommunityCategory.event.icon,
-            title: SNCommunityCategory.event.rawValue,
-            subtitle: SNCommunityCategory.event.subtitle,
-            destinationCategory: .event
-        ),
-        .init(
             icon: SNCommunityCategory.recommend.icon,
-            title: SNCommunityCategory.recommend.rawValue,
-            subtitle: SNCommunityCategory.recommend.subtitle,
+            title: "ダイエットのヒント",
+            subtitle: "体重管理や食事のアイデア",
             destinationCategory: .recommend
         ),
         .init(
-            icon: SNCommunityCategory.announcement.icon,
-            title: SNCommunityCategory.announcement.rawValue,
-            subtitle: SNCommunityCategory.announcement.subtitle,
-            destinationCategory: .announcement
+            icon: SNCommunityCategory.recommend.icon,
+            title: "運動のヒント",
+            subtitle: "トレーニングやストレッチのアイデア",
+            destinationCategory: .recommend
+        ),
+        .init(
+            icon: SNCommunityCategory.recommend.icon,
+            title: "セルフケアのヒント",
+            subtitle: "睡眠・リカバリー・メンタルケア",
+            destinationCategory: .recommend
         )
     ]
 
@@ -48,7 +53,7 @@ struct CommunityView: View {
                     heroCard
                     quickActionsCard
 
-                    // 初期リリースでは最新一覧は封印（コミュニティOFF時は非表示）
+                    // コミュニティON時のみ「お知らせ」表示
                     if FeatureFlags.isCommunityEnabled {
                         latestCard
                     }
@@ -63,7 +68,6 @@ struct CommunityView: View {
             .navigationBarTitleDisplayMode(.inline)
             .background(Color(.systemGroupedBackground).ignoresSafeArea())
             .task {
-                // コミュニティ機能が有効なビルドでのみデータ取得
                 if FeatureFlags.isCommunityEnabled {
                     await vm.fetch()
                 }
@@ -88,40 +92,13 @@ struct CommunityView: View {
                 .font(.title3.bold())
                 .foregroundColor(Theme.dark)
 
-            Text("スタジオからの最新情報やおすすめをお届けします。")
+            // NEW: 日々の変化をシェアする説明文
+            Text("日々の変化やセルフケアのヒントをシェアしましょう。")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
 
-            // 機能ON/OFFでバッジの表示を切り替え
-            if FeatureFlags.isCommunityEnabled {
-                HStack(spacing: 8) {
-                    Image(systemName: "sparkles")
-                        .font(.caption.weight(.semibold))
-                        .foregroundColor(.secondary)
-
-                    Text("コミュニティ機能をご利用いただけます")
-                        .font(.caption.weight(.semibold))
-                        .foregroundColor(.secondary)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Capsule().fill(Color.black.opacity(0.05)))
-            } else {
-                HStack(spacing: 8) {
-                    Image(systemName: "clock")
-                        .font(.caption.weight(.semibold))
-                        .foregroundColor(.secondary)
-
-                    Text("現在は準備中（近日公開）")
-                        .font(.caption.weight(.semibold))
-                        .foregroundColor(.secondary)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Capsule().fill(Color.black.opacity(0.05)))
-            }
-
+            // ステータスバッジは削除。エラーのみ表示
             if FeatureFlags.isCommunityEnabled,
                let msg = vm.errorMessage,
                !msg.isEmpty {
@@ -228,17 +205,12 @@ struct CommunityView: View {
     private var latestCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("最新")
+                // タイトル修正：「お知らせ（新着順3件表示）」→「お知らせ（新着）」
+                Text("お知らせ（新着）")
                     .font(.headline)
                     .foregroundColor(Theme.dark)
                 Spacer()
-
-                Text("ダミー表示")
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(.secondary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Capsule().fill(Color.black.opacity(0.05)))
+                // 右側の「ダミー表示」バッジは削除
             }
 
             if vm.isLoading {
@@ -253,7 +225,7 @@ struct CommunityView: View {
                 let latest = vm.latest(limit: 3)
 
                 if latest.isEmpty {
-                    Text("最新の投稿はまだありません（ダミー）")
+                    Text("最新のお知らせはまだありません（ダミー）")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                         .padding(.vertical, 6)

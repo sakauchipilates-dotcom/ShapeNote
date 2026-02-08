@@ -1,9 +1,9 @@
 import Foundation
 
 enum SNCommunityCategory: String, CaseIterable, Identifiable {
-    case share = "記録の共有"
-    case event = "イベント告知"
-    case recommend = "おすすめ投稿"
+    case share = "記録をシェア"
+    case event = "イベントのご案内"
+    case recommend = "おすすめ"
     case announcement = "スタジオからのお知らせ"
 
     var id: String { rawValue }
@@ -19,10 +19,14 @@ enum SNCommunityCategory: String, CaseIterable, Identifiable {
 
     var subtitle: String {
         switch self {
-        case .share: return "継続のコツや変化をシェア"
-        case .event: return "グループ/キャンペーンの案内"
-        case .recommend: return "運動・食事・セルフケア"
-        case .announcement: return "休講/更新情報など"
+        case .share:
+            return "継続のコツや変化をシェア"
+        case .event:
+            return "イベントやキャンペーンのご案内"
+        case .recommend:
+            return "運動・食事・セルフケアのヒント"
+        case .announcement:
+            return "スタジオからのお知らせ・更新情報"
         }
     }
 }

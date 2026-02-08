@@ -26,6 +26,21 @@ struct MyPageView: View {
     @State private var deleteErrorMessage: String = ""
     @State private var showDeleteErrorAlert: Bool = false
 
+    // ✅ 記録リマインド（ON/OFFのみ @AppStorage で共有）
+    @AppStorage("recordReminderEnabled") private var recordReminderEnabled: Bool = true
+
+    // ✅ 記録リマインドの時刻（DatePicker 用）
+    @State private var reminderTime: Date = {
+        var comps = DateComponents()
+        comps.hour = RecordReminderSettings.default.hour
+        comps.minute = RecordReminderSettings.default.minute
+        return Calendar.current.date(from: comps) ?? Date()
+    }()
+
+    @State private var showReminderTimeSheet: Bool = false
+
+    private let calendar = Calendar.current
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -62,15 +77,28 @@ struct MyPageView: View {
                 )
             }
             .task {
-                // ✅ 無料はクーポン取得をしない（Firestoreコスト削減 & 不要アクセス防止）
-                guard appState.subscriptionState.isPremium else {
+                // ✅ クーポン：無料ユーザーは Firestore に触らない
+                if appState.subscriptionState.isPremium {
+                    await fetchAvailableCouponCount()
+                } else {
                     await MainActor.run {
                         availableCouponCount = 0
                         isLoadingCoupons = false
                     }
-                    return
                 }
-                await fetchAvailableCouponCount()
+
+                // ✅ 記録リマインド設定をロードして UI と同期
+                let loaded = RecordReminderManager.shared.loadSettings()
+                await MainActor.run {
+                    recordReminderEnabled = loaded.isEnabled
+
+                    var comps = DateComponents()
+                    comps.hour = loaded.hour
+                    comps.minute = loaded.minute
+                    if let date = calendar.date(from: comps) {
+                        reminderTime = date
+                    }
+                }
             }
 
             // ✅ Premiumゲート：2ボタン + 購入導線（審査向け）
@@ -157,6 +185,54 @@ struct MyPageView: View {
                 .presentationDetents([.medium])
             }
 
+            // ✅ 記録リマインド時間設定シート（OK/キャンセルで閉じる）
+            .sheet(isPresented: $showReminderTimeSheet) {
+                NavigationStack {
+                    VStack {
+                        DatePicker(
+                            "",
+                            selection: $reminderTime,
+                            displayedComponents: .hourAndMinute
+                        )
+                        .datePickerStyle(.wheel)
+                        .labelsHidden()
+                        .frame(maxHeight: 250)
+                        .padding(.top, 24)
+
+                        Spacer()
+                    }
+                    .padding(.horizontal, 24)
+                    .navigationTitle("記録リマインドの時間")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarLeading) {
+                            Button("キャンセル") {
+                                // 変更を破棄して閉じるだけ
+                                showReminderTimeSheet = false
+
+                                // 表示だけ元の設定に戻したい場合は、再ロードしても良い
+                                let current = RecordReminderManager.shared.loadSettings()
+                                var comps = DateComponents()
+                                comps.hour = current.hour
+                                comps.minute = current.minute
+                                if let date = calendar.date(from: comps) {
+                                    reminderTime = date
+                                }
+                            }
+                        }
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button("保存") {
+                                persistReminderSettings()
+                                showReminderTimeSheet = false
+                            }
+                            .bold()
+                        }
+                    }
+                }
+                .presentationDetents([.height(320)])
+                .interactiveDismissDisabled(true) // 画面タップでは閉じない
+            }
+
             // ✅ 削除中オーバーレイ
             .overlay {
                 if isDeleting {
@@ -169,6 +245,11 @@ struct MyPageView: View {
                             .shadow(radius: 6)
                     }
                 }
+            }
+
+            // ✅ トグル変更時に設定を保存して通知スケジュールを更新
+            .onChange(of: recordReminderEnabled) { _ in
+                persistReminderSettings()
             }
         }
     }
@@ -331,7 +412,37 @@ struct MyPageView: View {
             }
             Divider()
 
-            // ✅ アカウント削除（アプリ内で完結：Apple 5.1.1(v) 対策）
+            // ✅ 記録リマインド（ON/OFF + 時刻設定）
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Toggle(isOn: $recordReminderEnabled) {
+                        Label("記録リマインド", systemImage: "bell.badge")
+                    }
+
+                    Spacer()
+
+                    Button(reminderTimeText) {
+                        showReminderTimeSheet = true
+                    }
+                    .font(.footnote.weight(.semibold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color(.secondarySystemBackground))
+                    )
+                }
+
+                Text("毎日 \(reminderTimeText) ごろにお知らせします。")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(.leading, 2)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding()
+            Divider()
+
+            // ✅ アカウント削除
             Button {
                 showDeleteConfirm = true
             } label: {
@@ -359,6 +470,12 @@ struct MyPageView: View {
         .padding(.top, 6)
     }
 
+    private var reminderTimeText: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        return formatter.string(from: reminderTime)
+    }
+
     // MARK: - Delete flow
     @MainActor
     private func runDeleteFlow(password: String?) async {
@@ -377,7 +494,7 @@ struct MyPageView: View {
         } catch {
             let ns = error as NSError
 
-            // CustomerAppState 側の「再認証が必要」判定（userInfoに requiresReauth=true を入れている）
+            // CustomerAppState 側の「再認証が必要」判定
             let requiresReauth = (ns.userInfo["requiresReauth"] as? Bool) == true
                 || ns.code == AuthErrorCode.requiresRecentLogin.rawValue
 
@@ -394,7 +511,21 @@ struct MyPageView: View {
         }
     }
 
+    // MARK: - 記録リマインド設定の保存
+
+    private func persistReminderSettings() {
+        var settings = RecordReminderManager.shared.loadSettings()
+        settings.isEnabled = recordReminderEnabled
+
+        let comps = calendar.dateComponents([.hour, .minute], from: reminderTime)
+        settings.hour = comps.hour ?? settings.hour
+        settings.minute = comps.minute ?? settings.minute
+
+        RecordReminderManager.shared.updateSettings(settings)
+    }
+
     // MARK: - Firestore：利用可能クーポン数（Premiumのみ呼ばれる）
+
     private func fetchAvailableCouponCount() async {
         guard let uid = Auth.auth().currentUser?.uid else {
             await MainActor.run {

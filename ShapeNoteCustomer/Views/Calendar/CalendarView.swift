@@ -38,13 +38,22 @@ struct CalendarView: View {
     }
     @State private var metric: AnalyticsMetric = .weight
 
+    // ✅ 記録リマインドのON/OFF（MyPageと共有）
+    @AppStorage("recordReminderEnabled") private var recordReminderEnabled: Bool = true
+
+    // ✅ 記録レポート説明アラート表示フラグ
+    @State private var isShowingExportInfoAlert: Bool = false
+
     // MARK: Body
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
 
-                // ✅ 追加：月表示＋左右移動ボタン（ヘッダー）
+                // ✅ 月表示＋左右移動ボタン（ヘッダー）
                 monthHeader
+
+                // ✅ リマインドバナー（通知OFF / ON で文言切替）
+                reminderBannerIfNeeded
 
                 CalendarGridView(
                     calendar: calendar,
@@ -128,9 +137,15 @@ struct CalendarView: View {
             let h = weightManager.height
             heightCmInputText = h > 0 ? String(format: "%.0f", h * 100.0) : ""
         }
+        // ✅ 記録レポート用の説明アラート
+        .alert("記録レポートはプレミアム機能です", isPresented: $isShowingExportInfoAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("今後のアップデートで、プレミアム会員向けに体重や体調の記録をシート形式で保存・共有できるレポート機能を提供予定です。現バージョンではまだご利用いただけません。")
+        }
     }
 
-    // MARK: - ✅ Month Header（追加）
+    // MARK: - ✅ Month Header
     private var monthHeader: some View {
         HStack(spacing: 12) {
             Button {
@@ -174,6 +189,186 @@ struct CalendarView: View {
 
     private var displayedMonthTitle: String {
         displayedMonthDate.formatted(.dateTime.year().month().locale(Locale(identifier: "ja_JP")))
+    }
+
+    private var displayedMonthDate: Date {
+        calendar.date(byAdding: .month, value: currentMonthOffset, to: Date()) ?? Date()
+    }
+
+    // MARK: - リマインドバナー（ON/OFFで出し分け）
+
+    private var reminderBannerIfNeeded: some View {
+        Group {
+            if recordReminderEnabled {
+                reminderBannerForTodayRecord
+            } else {
+                reminderBannerForReminderOff
+            }
+        }
+    }
+
+    /// 今日の記録が1件もない場合に true
+    private var needsTodayReminder: Bool {
+        let today = calendar.startOfDay(for: Date())
+
+        let hasRecordToday = weightManager.weights.contains { record in
+            calendar.isDate(record.date, inSameDayAs: today)
+        }
+
+        return !hasRecordToday
+    }
+
+    /// 通知ONユーザー向け：「今日の記録がまだのようです / 今日も記録できました！」
+    private var reminderBannerForTodayRecord: some View {
+        Group {
+            if needsTodayReminder {
+                HStack(alignment: .center, spacing: 12) {
+                    Image(systemName: "bell.badge")
+                        .font(.headline)
+                        .foregroundColor(Theme.sub)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("今日の記録がまだのようです")
+                            .font(.subheadline.weight(.semibold))
+
+                        Text("体重や体調を、忘れないうちに記録しておきましょう。")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Spacer()
+
+                    Button {
+                        let today = Date()
+                        selectedDate = today
+                        weightSheetMode = .addNew(day: today)
+                        showWeightSheet = true
+                    } label: {
+                        Text("記録する")
+                            .font(.caption.bold())
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(
+                                Capsule()
+                                    .fill(Theme.sub.opacity(0.95))
+                            )
+                            .foregroundColor(.white)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color(.secondarySystemBackground))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(Color.black.opacity(0.05), lineWidth: 1)
+                )
+                .padding(.horizontal, 20)
+            } else {
+                // すでに今日の記録がある場合の「できました！」バナー
+                HStack(alignment: .center, spacing: 12) {
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.headline)
+                        .foregroundColor(Theme.sub)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("今日も記録できました！")
+                            .font(.subheadline.weight(.semibold))
+
+                        Text("続けることで、からだの変化が見えやすくなります。")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Spacer()
+
+                    Button {
+                        let today = calendar.startOfDay(for: Date())
+                        selectedDate = today
+                        showDayDetailSheet = true
+                    } label: {
+                        Text("今日の記録を見る")
+                            .font(.caption.bold())
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(
+                                Capsule()
+                                    .fill(Color(.systemBackground))
+                            )
+                            .overlay(
+                                Capsule()
+                                    .stroke(Theme.sub.opacity(0.8), lineWidth: 1)
+                            )
+                            .foregroundColor(Theme.sub)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color(.secondarySystemBackground))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(Color.black.opacity(0.05), lineWidth: 1)
+                )
+                .padding(.horizontal, 20)
+            }
+        }
+    }
+
+    /// 通知OFFユーザー向け：「記録リマインドを設定しませんか？」
+    private var reminderBannerForReminderOff: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: "bell.slash")
+                .font(.headline)
+                .foregroundColor(.secondary)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("記録リマインドを設定しませんか？")
+                    .font(.subheadline.weight(.semibold))
+
+                Text("毎日決まった時間に、体重や体調の記録をお知らせできます。マイページからオン／オフと時間を設定できます。")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer()
+
+            Button {
+                // 将来：ここからマイページの「記録リマインド」設定へ誘導する導線を追加する想定。
+            } label: {
+                Text("通知を設定する")
+                    .font(.caption.bold())
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        Capsule()
+                            .fill(Color(.systemBackground))
+                    )
+                    .overlay(
+                        Capsule()
+                            .stroke(Theme.sub.opacity(0.8), lineWidth: 1)
+                    )
+                    .foregroundColor(Theme.sub)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color(.secondarySystemBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.black.opacity(0.05), lineWidth: 1)
+        )
+        .padding(.horizontal, 20)
     }
 
     // MARK: - WeightInputSheet wrapper
@@ -234,7 +429,7 @@ struct CalendarView: View {
         }
     }
 
-    // MARK: - Analytics
+    // MARK: - Analytics（グラフ＋レポートボタン）
     private var analyticsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
 
@@ -252,7 +447,7 @@ struct CalendarView: View {
                 .frame(width: 200)
             }
 
-            // ★追加：グラフ種別切り替え
+            // ★グラフ種別切り替え
             Picker("", selection: $metric) {
                 Text("体重").tag(AnalyticsMetric.weight)
                 Text("BMI").tag(AnalyticsMetric.bmi)
@@ -308,12 +503,65 @@ struct CalendarView: View {
                     )
                 }
             }
+
+            // ✅ グラフの下にレポート出力ボタン（プレミアム予定）
+            exportSection
         }
         .padding(.horizontal, 20)
     }
 
-    private var displayedMonthDate: Date {
-        calendar.date(byAdding: .month, value: currentMonthOffset, to: Date()) ?? Date()
+    private var exportSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                // いまは常に説明アラートを表示（無料アカウントでも価値を見せる）
+                isShowingExportInfoAlert = true
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: FeatureFlags.isRecordExportEnabled ? "square.and.arrow.up" : "lock.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(
+                            FeatureFlags.isRecordExportEnabled
+                            ? Color.accentColor
+                            : .secondary
+                        )
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("記録をレポートとして保存 / 共有")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundColor(.primary)
+
+                        Text(exportDescriptionText)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Spacer()
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color(.secondarySystemBackground))
+                )
+            }
+            .buttonStyle(.plain)
+
+            if !FeatureFlags.isRecordExportEnabled {
+                Text("※ 日々の記録入力とグラフの閲覧は、すべて無料でご利用いただけます。")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(.top, 4)
+    }
+
+    private var exportDescriptionText: String {
+        if FeatureFlags.isRecordExportEnabled {
+            return "グラフと記録をレポートにまとめて、画像やPDFとして保存・共有できるようにする機能です。"
+        } else {
+            return "プレミアム会員向け機能として提供予定です。初期リリースではご利用いただけません。"
+        }
     }
 
     // MARK: - Goal + Height + BMI

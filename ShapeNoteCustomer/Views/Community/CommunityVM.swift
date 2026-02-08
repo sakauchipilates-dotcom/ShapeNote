@@ -26,7 +26,7 @@ final class CommunityVM: ObservableObject {
             SNCommunityFeedItem(
                 category: .recommend,
                 title: "おすすめセルフケアを追加しました",
-                body: "動画・記事などのおすすめをここに表示します（ダミー）。",
+                body: "運動・食事・セルフケアに関するおすすめをここに表示します（ダミー）。",
                 date: Calendar.current.date(byAdding: .day, value: -5, to: now) ?? now
             ),
             SNCommunityFeedItem(
@@ -38,7 +38,7 @@ final class CommunityVM: ObservableObject {
             // share カテゴリも将来の導線として 1件入れておく（“一覧が空”になりにくい）
             SNCommunityFeedItem(
                 category: .share,
-                title: "記録の共有（準備中）",
+                title: "記録をシェア（準備中）",
                 body: "継続のコツや変化のシェア機能を準備しています（ダミー）。",
                 date: Calendar.current.date(byAdding: .day, value: -14, to: now) ?? now
             )

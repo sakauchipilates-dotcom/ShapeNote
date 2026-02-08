@@ -2,59 +2,118 @@ import UIKit
 import SwiftUI
 import ShapeCore
 
-/// 1枚の診断書PDF風画像を生成する（暫定版）
+// MARK: - 記録レポート用コンテキスト
+
+/// レポート用の 1 点（日時＋体重）
+struct RecordReportPoint {
+    let date: Date
+    let weight: Double
+}
+
+/// 月間 / 年間 の記録レポートを生成するためのコンテキスト
+struct RecordReportContext {
+
+    enum Mode {
+        /// 基準日が属する「月」を対象にしたレポート
+        case monthly
+        /// 基準日が属する「年」を対象にしたレポート
+        case yearly
+    }
+
+    /// 月間 / 年間
+    let mode: Mode
+
+    /// どの月 / 年を基準とするか（カレンダー計算用）
+    let baseDate: Date
+
+    /// 期間内の候補となる記録ポイント（フィルタ前でもOK）
+    let points: [RecordReportPoint]
+
+    /// 目標体重（kg） – 未設定の場合は nil
+    let goalWeight: Double?
+
+    /// 身長（m） – 未設定の場合は nil
+    let height: Double?
+}
+
+/// PDF風のレポート画像を生成するユーティリティ。
+///
+/// - AI姿勢分析レポート
+/// - 体重・体調の記録レポート（v1 実装）
 final class ReportGenerator {
 
+    // MARK: - 共通
+
+    private static let calendar = Calendar(identifier: .gregorian)
+
+    // MARK: - AI姿勢分析レポート
+
+    /// 1枚の診断書PDF風画像を生成する（暫定版）
     static func generate(from data: ReportData) -> UIImage {
 
         let width: CGFloat = 1600
         let height: CGFloat = 2300
-        
+
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: width, height: height))
-        
+
         return renderer.image { ctx in
             let context = ctx.cgContext
-            
+
             // 背景
             context.setFillColor(UIColor.white.cgColor)
             context.fill(CGRect(x: 0, y: 0, width: width, height: height))
-            
+
             // タイトル
             let title = "AI姿勢分析レポート"
-            let titleAttr: [NSAttributedString.Key : Any] = [
+            let titleAttr: [NSAttributedString.Key: Any] = [
                 .font: UIFont.boldSystemFont(ofSize: 46),
                 .foregroundColor: UIColor.black
             ]
-            title.draw(in: CGRect(x: 60, y: 60, width: width-120, height: 60), withAttributes: titleAttr)
-            
+            title.draw(
+                in: CGRect(x: 60, y: 60, width: width - 120, height: 60),
+                withAttributes: titleAttr
+            )
+
             // 日付
             let df = DateFormatter()
             df.dateFormat = "yyyy/MM/dd"
             let dateString = "Date: \(df.string(from: data.date))"
-            dateString.draw(in: CGRect(x: 60, y: 130, width: 600, height: 40),
-                            withAttributes: [.font: UIFont.systemFont(ofSize: 28),
-                                             .foregroundColor: UIColor.darkGray])
-            
+            dateString.draw(
+                in: CGRect(x: 60, y: 130, width: 600, height: 40),
+                withAttributes: [
+                    .font: UIFont.systemFont(ofSize: 28),
+                    .foregroundColor: UIColor.darkGray
+                ]
+            )
+
             // 画像2枚（左右）
             let imgH: CGFloat = 700
-            data.capturedImage.draw(in: CGRect(x: 80, y: 200, width: 700, height: imgH))
-            data.skeletonImage.draw(in: CGRect(x: 820, y: 200, width: 700, height: imgH))
-            
+            data.capturedImage.draw(
+                in: CGRect(x: 80, y: 200, width: 700, height: imgH)
+            )
+            data.skeletonImage.draw(
+                in: CGRect(x: 820, y: 200, width: 700, height: imgH)
+            )
+
             // スコア
             let scoreStr = "姿勢スコア: \(data.score)/100"
             scoreStr.draw(
-                in: CGRect(x: 80, y: 950, width: width-160, height: 60),
-                withAttributes: [.font: UIFont.boldSystemFont(ofSize: 42),
-                                 .foregroundColor: UIColor.black]
+                in: CGRect(x: 80, y: 950, width: width - 160, height: 60),
+                withAttributes: [
+                    .font: UIFont.boldSystemFont(ofSize: 42),
+                    .foregroundColor: UIColor.black
+                ]
             )
-            
+
             // コメント
             data.message.draw(
-                in: CGRect(x: 80, y: 1020, width: width-160, height: 200),
-                withAttributes: [.font: UIFont.systemFont(ofSize: 32),
-                                 .foregroundColor: UIColor.darkGray]
+                in: CGRect(x: 80, y: 1020, width: width - 160, height: 200),
+                withAttributes: [
+                    .font: UIFont.systemFont(ofSize: 32),
+                    .foregroundColor: UIColor.darkGray
+                ]
             )
-            
+
             // 指標テキスト
             let items = [
                 "肩の左右差: \(String(format: "%.3f", data.shoulderDiff))",
@@ -64,26 +123,456 @@ final class ReportGenerator {
                 "膝の左右差: \(String(format: "%.3f", data.kneeDiff))",
                 "足首の左右差: \(String(format: "%.3f", data.ankleDiff))"
             ]
-            
+
             var y: CGFloat = 1250
-            
+
             for line in items {
                 line.draw(
-                    in: CGRect(x: 80, y: y, width: width-160, height: 40),
-                    withAttributes: [.font: UIFont.systemFont(ofSize: 30),
-                                     .foregroundColor: UIColor.black]
+                    in: CGRect(x: 80, y: y, width: width - 160, height: 40),
+                    withAttributes: [
+                        .font: UIFont.systemFont(ofSize: 30),
+                        .foregroundColor: UIColor.black
+                    ]
                 )
                 y += 55
             }
-            
+
             // フッター
             "Generated by ShapeNote".draw(
-                in: CGRect(x: 80,
-                           y: height - 120,
-                           width: width-160,
-                           height: 40),
-                withAttributes: [.font: UIFont.systemFont(ofSize: 26),
-                                 .foregroundColor: UIColor.gray])
+                in: CGRect(
+                    x: 80,
+                    y: height - 120,
+                    width: width - 160,
+                    height: 40
+                ),
+                withAttributes: [
+                    .font: UIFont.systemFont(ofSize: 26),
+                    .foregroundColor: UIColor.gray
+                ]
+            )
+        }
+    }
+
+    // MARK: - 記録レポート v1
+
+    /// 「月間 / 年間 体重グラフ + 統計値 + 簡易体調サマリ」を 1 枚にまとめたレポート画像
+    static func generateRecordSummary(from context: RecordReportContext) -> UIImage {
+
+        let width: CGFloat = 1600
+        let height: CGFloat = 2300
+        let size = CGSize(width: width, height: height)
+
+        let renderer = UIGraphicsImageRenderer(size: size)
+
+        // 日付範囲と期間内ポイントに絞り込み
+        let (startDate, endDate) = dateRange(for: context)
+        let periodPoints = context.points.filter { point in
+            (point.date >= startDate) && (point.date < endDate)
+        }.sorted { $0.date < $1.date }
+
+        let stats = weightStats(for: periodPoints)
+        let periodDayCount = daysBetween(start: startDate, end: endDate)
+        let recordedDayCount = uniqueRecordedDayCount(for: periodPoints)
+
+        return renderer.image { ctx in
+            let contextCG = ctx.cgContext
+
+            // 背景
+            contextCG.setFillColor(UIColor.white.cgColor)
+            contextCG.fill(CGRect(origin: .zero, size: size))
+
+            // ---- ヘッダー ----
+            let title = "からだ記録レポート"
+            let titleAttr: [NSAttributedString.Key: Any] = [
+                .font: UIFont.boldSystemFont(ofSize: 44),
+                .foregroundColor: UIColor.black
+            ]
+
+            title.draw(
+                in: CGRect(x: 80, y: 60, width: width - 160, height: 56),
+                withAttributes: titleAttr
+            )
+
+            let periodLabel = periodLabelFor(mode: context.mode, baseDate: context.baseDate)
+            let periodAttr: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: 30),
+                .foregroundColor: UIColor.darkGray
+            ]
+            periodLabel.draw(
+                in: CGRect(x: 80, y: 120, width: width - 160, height: 40),
+                withAttributes: periodAttr
+            )
+
+            let rangeLabel = dateRangeText(start: startDate, end: endDate)
+            let rangeAttr: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: 26),
+                .foregroundColor: UIColor.gray
+            ]
+            rangeLabel.draw(
+                in: CGRect(x: 80, y: 160, width: width - 160, height: 34),
+                withAttributes: rangeAttr
+            )
+
+            // ---- グラフエリア ----
+            let chartRect = CGRect(x: 80, y: 220, width: width - 160, height: 620)
+            drawWeightChart(
+                in: chartRect,
+                context: contextCG,
+                points: periodPoints,
+                startDate: startDate,
+                endDate: endDate,
+                goalWeight: context.goalWeight
+            )
+
+            // ---- 体重サマリ ----
+            let sectionTitleAttr: [NSAttributedString.Key: Any] = [
+                .font: UIFont.boldSystemFont(ofSize: 32),
+                .foregroundColor: UIColor.black
+            ]
+            let bodyAttr: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: 28),
+                .foregroundColor: UIColor.black
+            ]
+            let smallAttr: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: 24),
+                .foregroundColor: UIColor.darkGray
+            ]
+
+            let statsTopY = chartRect.maxY + 40
+
+            "体重サマリ".draw(
+                in: CGRect(x: 80, y: statsTopY, width: width - 160, height: 40),
+                withAttributes: sectionTitleAttr
+            )
+
+            var lineY = statsTopY + 50
+
+            if let avg = stats.average {
+                let avgStr = String(format: "平均体重: %.1f kg", avg)
+                avgStr.draw(
+                    in: CGRect(x: 80, y: lineY, width: width - 160, height: 34),
+                    withAttributes: bodyAttr
+                )
+                lineY += 40
+            } else {
+                "平均体重: —".draw(
+                    in: CGRect(x: 80, y: lineY, width: width - 160, height: 34),
+                    withAttributes: bodyAttr
+                )
+                lineY += 40
+            }
+
+            if let max = stats.max {
+                let dateText = formattedDay(for: max.date, mode: context.mode)
+                let maxStr = String(format: "最大体重: %.1f kg（%@）", max.value, dateText)
+                maxStr.draw(
+                    in: CGRect(x: 80, y: lineY, width: width - 160, height: 34),
+                    withAttributes: bodyAttr
+                )
+                lineY += 40
+            } else {
+                "最大体重: —".draw(
+                    in: CGRect(x: 80, y: lineY, width: width - 160, height: 34),
+                    withAttributes: bodyAttr
+                )
+                lineY += 40
+            }
+
+            if let min = stats.min {
+                let dateText = formattedDay(for: min.date, mode: context.mode)
+                let minStr = String(format: "最小体重: %.1f kg（%@）", min.value, dateText)
+                minStr.draw(
+                    in: CGRect(x: 80, y: lineY, width: width - 160, height: 34),
+                    withAttributes: bodyAttr
+                )
+                lineY += 40
+            } else {
+                "最小体重: —".draw(
+                    in: CGRect(x: 80, y: lineY, width: width - 160, height: 34),
+                    withAttributes: bodyAttr
+                )
+                lineY += 40
+            }
+
+            if let avg = stats.average,
+               let h = context.height,
+               h > 0
+            {
+                let bmi = avg / (h * h)
+                let bmiStr = String(format: "期間内平均 BMI: %.1f", bmi)
+                bmiStr.draw(
+                    in: CGRect(x: 80, y: lineY, width: width - 160, height: 34),
+                    withAttributes: smallAttr
+                )
+                lineY += 40
+            }
+
+            // ---- 体調サマリ（簡易版：記録頻度） ----
+            let healthTopY = lineY + 30
+
+            "体調サマリ".draw(
+                in: CGRect(x: 80, y: healthTopY, width: width - 160, height: 40),
+                withAttributes: sectionTitleAttr
+            )
+
+            let healthLineY = healthTopY + 50
+            let freqStr = "記録日数: \(recordedDayCount)日 / 期間日数: \(periodDayCount)日"
+            freqStr.draw(
+                in: CGRect(x: 80, y: healthLineY, width: width - 160, height: 34),
+                withAttributes: bodyAttr
+            )
+
+            let note = "※体調の詳細レポート（良い日・悪い日の割合など）は、アプリ内の「体調」グラフで確認できます。"
+            note.draw(
+                in: CGRect(x: 80, y: healthLineY + 40, width: width - 160, height: 80),
+                withAttributes: smallAttr
+            )
+
+            // ---- フッター ----
+            let footer = "Generated by ShapeNote"
+            let footerAttr: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: 24),
+                .foregroundColor: UIColor.gray
+            ]
+            footer.draw(
+                in: CGRect(x: 80, y: height - 100, width: width - 160, height: 32),
+                withAttributes: footerAttr
+            )
+        }
+    }
+
+    // MARK: - 記録レポート：ヘルパー
+
+    private struct WeightStats {
+        let average: Double?
+        let max: (value: Double, date: Date)?
+        let min: (value: Double, date: Date)?
+    }
+
+    private static func dateRange(for context: RecordReportContext) -> (start: Date, end: Date) {
+        switch context.mode {
+        case .monthly:
+            let comps = calendar.dateComponents([.year, .month], from: context.baseDate)
+            let start = calendar.date(from: DateComponents(year: comps.year, month: comps.month, day: 1))
+                ?? context.baseDate
+            let end = calendar.date(byAdding: .month, value: 1, to: start)
+                ?? context.baseDate.addingTimeInterval(60 * 60 * 24 * 31)
+            return (start, end)
+
+        case .yearly:
+            let year = calendar.component(.year, from: context.baseDate)
+            let start = calendar.date(from: DateComponents(year: year, month: 1, day: 1))
+                ?? context.baseDate
+            let end = calendar.date(byAdding: .year, value: 1, to: start)
+                ?? context.baseDate.addingTimeInterval(60 * 60 * 24 * 366)
+            return (start, end)
+        }
+    }
+
+    private static func periodLabelFor(mode: RecordReportContext.Mode, baseDate: Date) -> String {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "ja_JP")
+
+        switch mode {
+        case .monthly:
+            df.dateFormat = "yyyy年M月"
+            return df.string(from: baseDate) + " 体重レポート（月間）"
+        case .yearly:
+            df.dateFormat = "yyyy年"
+            return df.string(from: baseDate) + " 体重レポート（年間）"
+        }
+    }
+
+    private static func dateRangeText(start: Date, end: Date) -> String {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "ja_JP")
+        df.dateFormat = "yyyy/MM/dd"
+
+        // end は「翌月 / 翌年の先頭」なので 1 日引く
+        let endInclusive = calendar.date(byAdding: .day, value: -1, to: end) ?? end
+
+        return "期間: \(df.string(from: start)) 〜 \(df.string(from: endInclusive))"
+    }
+
+    private static func weightStats(for points: [RecordReportPoint]) -> WeightStats {
+        guard !points.isEmpty else {
+            return WeightStats(average: nil, max: nil, min: nil)
+        }
+
+        let weights = points.map { $0.weight }
+        let sum = weights.reduce(0, +)
+        let avg = sum / Double(weights.count)
+
+        if let maxPoint = points.max(by: { $0.weight < $1.weight }),
+           let minPoint = points.min(by: { $0.weight < $1.weight }) {
+            return WeightStats(
+                average: avg,
+                max: (maxPoint.weight, maxPoint.date),
+                min: (minPoint.weight, minPoint.date)
+            )
+        } else {
+            return WeightStats(average: avg, max: nil, min: nil)
+        }
+    }
+
+    private static func daysBetween(start: Date, end: Date) -> Int {
+        let startDay = calendar.startOfDay(for: start)
+        let endDay = calendar.startOfDay(for: end)
+        let comps = calendar.dateComponents([.day], from: startDay, to: endDay)
+        return max(comps.day ?? 0, 0)
+    }
+
+    private static func uniqueRecordedDayCount(for points: [RecordReportPoint]) -> Int {
+        let days = points.map { calendar.startOfDay(for: $0.date) }
+        let set = Set(days)
+        return set.count
+    }
+
+    private static func formattedDay(for date: Date, mode: RecordReportContext.Mode) -> String {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "ja_JP")
+
+        switch mode {
+        case .monthly:
+            df.dateFormat = "M/d"
+        case .yearly:
+            df.dateFormat = "M/d"
+        }
+        return df.string(from: date)
+    }
+
+    /// シンプルな折れ線グラフを描画（期間内体重 + 目標線）
+    private static func drawWeightChart(
+        in rect: CGRect,
+        context: CGContext,
+        points: [RecordReportPoint],
+        startDate: Date,
+        endDate: Date,
+        goalWeight: Double?
+    ) {
+        // 枠線
+        context.setStrokeColor(UIColor.lightGray.cgColor)
+        context.setLineWidth(1.0)
+        context.stroke(rect)
+
+        guard !points.isEmpty else {
+            // データがない場合は「No Data」表示だけ
+            let attr: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: 28),
+                .foregroundColor: UIColor.lightGray
+            ]
+            let text = "この期間の記録がありません"
+            text.draw(
+                in: rect.insetBy(dx: 40, dy: (rect.height - 34) / 2),
+                withAttributes: attr
+            )
+            return
+        }
+
+        // 重みの範囲
+        var minWeight = points.map { $0.weight }.min() ?? 0
+        var maxWeight = points.map { $0.weight }.max() ?? 0
+
+        if let gw = goalWeight {
+            minWeight = min(minWeight, gw)
+            maxWeight = max(maxWeight, gw)
+        }
+
+        if abs(maxWeight - minWeight) < 0.1 {
+            // ほぼフラットな場合に上下に少しマージン
+            minWeight -= 0.5
+            maxWeight += 0.5
+        }
+
+        let weightRange = maxWeight - minWeight
+        let totalInterval = max(endDate.timeIntervalSince(startDate), 1)
+
+        // 目標線
+        if let gw = goalWeight {
+            let yRatio = (gw - minWeight) / weightRange
+            let y = rect.maxY - CGFloat(yRatio) * rect.height
+
+            context.setStrokeColor(UIColor.systemGreen.withAlphaComponent(0.6).cgColor)
+            context.setLineWidth(2.0)
+            context.setLineDash(phase: 0, lengths: [6, 4])
+
+            context.move(to: CGPoint(x: rect.minX, y: y))
+            context.addLine(to: CGPoint(x: rect.maxX, y: y))
+            context.strokePath()
+
+            context.setLineDash(phase: 0, lengths: [])
+        }
+
+        // 折れ線（体重）
+        let sorted = points.sorted { $0.date < $1.date }
+
+        context.setStrokeColor(UIColor.systemBlue.cgColor)
+        context.setLineWidth(3.0)
+
+        var isFirst = true
+        for point in sorted {
+            let interval = point.date.timeIntervalSince(startDate)
+            let xRatio = CGFloat(interval / totalInterval)
+            let x = rect.minX + xRatio * rect.width
+
+            let yRatio = (point.weight - minWeight) / weightRange
+            let y = rect.maxY - CGFloat(yRatio) * rect.height
+
+            if isFirst {
+                context.move(to: CGPoint(x: x, y: y))
+                isFirst = false
+            } else {
+                context.addLine(to: CGPoint(x: x, y: y))
+            }
+        }
+        context.strokePath()
+    }
+
+    // MARK: - 記録レポート（旧プレースホルダ）
+
+    /// 将来的に「体重・体調などの記録レポート」を追加するためのプレースホルダ。
+    ///
+    /// 現時点では未使用・互換性維持のために残している。
+    static func generateRecordSummaryPlaceholderImage(
+        title: String,
+        periodLabel: String
+    ) -> UIImage {
+        let size = CGSize(width: 1200, height: 1600)
+        let renderer = UIGraphicsImageRenderer(size: size)
+
+        return renderer.image { ctx in
+            let context = ctx.cgContext
+
+            // 背景
+            context.setFillColor(UIColor.white.cgColor)
+            context.fill(CGRect(origin: .zero, size: size))
+
+            let titleAttr: [NSAttributedString.Key: Any] = [
+                .font: UIFont.boldSystemFont(ofSize: 44),
+                .foregroundColor: UIColor.black
+            ]
+            let subtitleAttr: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: 30),
+                .foregroundColor: UIColor.darkGray
+            ]
+
+            // タイトル
+            let rectTitle = CGRect(x: 60, y: 80, width: size.width - 120, height: 60)
+            title.draw(in: rectTitle, withAttributes: titleAttr)
+
+            // 期間ラベル
+            let rectSub = CGRect(x: 60, y: 150, width: size.width - 120, height: 40)
+            periodLabel.draw(in: rectSub, withAttributes: subtitleAttr)
+
+            // 説明テキスト
+            let info = "※ この画像はプレースホルダです。今後のアップデートで、体重・体調の記録を一覧化したレポート生成機能を実装予定です。"
+            info.draw(
+                in: CGRect(x: 60, y: 240, width: size.width - 120, height: 200),
+                withAttributes: [
+                    .font: UIFont.systemFont(ofSize: 26),
+                    .foregroundColor: UIColor.gray
+                ]
+            )
         }
     }
 }
